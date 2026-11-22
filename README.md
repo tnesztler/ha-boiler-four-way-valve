@@ -191,6 +191,8 @@ Target temperature, HVAC mode, preset, and manual position are restored after a 
 
 The climate entity also reports `current_command` (the position last sent to the valve, or the one ready to send), `calculated_position` (the opening the maps would command), `manual_position`, `temperature_difference`, `outdoor_temperature`, `outdoor_adjustment`, and `max_position`. `cover_position` is the position the main cover is reporting. `valve_position` is the same value as `current_command`.
 
+Five sensors record the same numbers so History and long-term statistics can graph them: **Current command**, **Calculated position**, **Temperature offset** (target minus indoor temperature), **Outdoor offset** (percent points added from the outdoor map), and **Maximum position**. Temperature offset is unknown while the indoor temperature is missing. Outdoor offset is unknown while the outdoor temperature is missing.
+
 Those values are drawn above the built-in thermostat. A Thermostat card for this climate entity shows the panel over the dial, and opening the entity shows the same panel at the top of the dialog. Restart Home Assistant after installing or updating, then refresh the browser. If the dial is cramped, make the card taller.
 
 ## Credits

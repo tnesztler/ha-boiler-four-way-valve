@@ -17,7 +17,11 @@ from .const import DOMAIN
 from .runtime import ValveRuntime
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS: tuple[Platform, ...] = (Platform.CLIMATE, Platform.NUMBER)
+PLATFORMS: tuple[Platform, ...] = (
+    Platform.CLIMATE,
+    Platform.NUMBER,
+    Platform.SENSOR,
+)
 _FRONTEND_PATH = f"/{DOMAIN}/frontend"
 
 

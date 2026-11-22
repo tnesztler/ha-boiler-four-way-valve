@@ -81,6 +81,9 @@ from .const import (
     DEFAULT_POSITION_TOLERANCE,
     DOMAIN,
     PRESET_MANUAL,
+    SENSOR_MAXIMUM_POSITION,
+    SENSOR_OUTDOOR_OFFSET,
+    SENSOR_TEMPERATURE_OFFSET,
     STARTUP_SENSOR_GRACE_SECONDS,
 )
 from .device import device_info_for_cover
@@ -328,6 +331,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
                 )
             )
         self.async_write_ha_state()
+        self._publish_tracked()
 
     async def async_will_remove_from_hass(self) -> None:
         """Cancel a cover move that is waiting out the cycle time."""
@@ -600,6 +604,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
 
         position = self._next_command or 0
         self._commanded_position = position
+        self._publish_tracked()
 
         if self._covers_within_tolerance(position):
             self._cancel_pending()
@@ -711,6 +716,30 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self._calculated_position = calculated
         self._last_difference = difference
         self._last_outdoor_adjustment = adjustment
+        self._publish_tracked()
+
+    def tracked_snapshot(self) -> dict[str, float | None]:
+        """Return the values recorded by the history sensors."""
+        command = self._commanded_position
+        if command is None:
+            command = self._next_command
+        calculated = self._calculated_position
+        return {
+            ATTR_CURRENT_COMMAND: None if command is None else float(command),
+            ATTR_CALCULATED_POSITION: (
+                None if calculated is None else float(calculated)
+            ),
+            SENSOR_TEMPERATURE_OFFSET: self._last_difference,
+            SENSOR_OUTDOOR_OFFSET: self._last_outdoor_adjustment,
+            SENSOR_MAXIMUM_POSITION: float(self._max_position),
+        }
+
+    def _publish_tracked(self) -> None:
+        """Push the recorded values to their sensors."""
+        runtime = self.hass.data.get(DOMAIN, {}).get(self._attr_unique_id)
+        tracked = None if runtime is None else runtime.tracked
+        if tracked is not None:
+            tracked.publish(self.tracked_snapshot())
 
     def _remember_temperatures(self) -> None:
         """Store the temperatures that produced the latest command."""

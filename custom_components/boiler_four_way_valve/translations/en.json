@@ -39,6 +39,23 @@
       "manual_position": {
         "name": "Manual position"
       }
+    },
+    "sensor": {
+      "current_command": {
+        "name": "Current command"
+      },
+      "calculated_position": {
+        "name": "Calculated position"
+      },
+      "temperature_offset": {
+        "name": "Temperature offset"
+      },
+      "outdoor_offset": {
+        "name": "Outdoor offset"
+      },
+      "maximum_position": {
+        "name": "Maximum position"
+      }
     }
   },
   "config": {
