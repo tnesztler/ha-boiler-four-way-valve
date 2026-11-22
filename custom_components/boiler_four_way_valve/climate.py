@@ -85,11 +85,9 @@ from .const import (
 from .device import device_info_for_cover
 from .mapping import (
     DEFAULT_OUTDOOR_ADJUSTMENT,
-    apply_outdoor_and_limit,
-    cover_position,
-    limit_position,
     parse_outdoor_adjustment,
     parse_position_mapping,
+    valve_positions,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -286,6 +284,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self._hvac_mode: HVACMode | None = None
         self._commanded_position: int | None = None
         self._calculated_position: int | None = None
+        self._next_command: int | None = None
         self._manual_position = 0.0
         self._last_difference: float | None = None
         self._last_update_temp: float | None = None
@@ -594,20 +593,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
             if not self._temperature_changed_enough():
                 return
 
-        hvac_off = self._hvac_mode == HVACMode.OFF
-        if self._manual_active and not hvac_off:
-            position = limit_position(self._manual_position, self._max_position)
-        elif hvac_off:
-            position, _difference = cover_position(
-                self._mapping,
-                current=self._current_temp,
-                target=self._target_temp,
-                emergency=self._emergency_position,
-                hvac_off=True,
-            )
-            position = limit_position(position, self._max_position)
-        else:
-            position = self._calculated_position or 0
+        position = self._next_command or 0
         self._commanded_position = position
 
         if self._covers_within_tolerance(position):
@@ -703,21 +689,21 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         return delta >= self._min_temp_change_step
 
     def _store_calculated_position(self) -> None:
-        """Store the position the maps would command, without sending it."""
-        position, difference = cover_position(
+        """Store the map opening and the position that would be commanded."""
+        command, calculated, difference, adjustment = valve_positions(
             self._mapping,
             current=self._current_temp,
             target=self._target_temp,
             emergency=self._emergency_position,
-            hvac_off=False,
-        )
-        position, adjustment = apply_outdoor_and_limit(
-            position,
+            hvac_off=self._hvac_mode == HVACMode.OFF,
+            manual=self._manual_active,
+            manual_position=self._manual_position,
             outdoor=self._outdoor_temp,
             outdoor_mapping=self._outdoor_mapping,
             max_position=self._max_position,
         )
-        self._calculated_position = position
+        self._next_command = command
+        self._calculated_position = calculated
         self._last_difference = difference
         self._last_outdoor_adjustment = adjustment
 

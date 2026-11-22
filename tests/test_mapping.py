@@ -274,5 +274,104 @@ class OutdoorAndLimitTests(unittest.TestCase):
             mapping.parse_outdoor_adjustment({})
 
 
+class ControlDecisionTests(unittest.TestCase):
+    """Command versus the opening the maps would choose."""
+
+    def setUp(self) -> None:
+        self.indoor = mapping.parse_position_mapping(mapping.DEFAULT_POSITION_MAPPING)
+        self.outdoor = mapping.parse_outdoor_adjustment(
+            mapping.DEFAULT_OUTDOOR_ADJUSTMENT
+        )
+
+    def _positions(
+        self, **overrides: object
+    ) -> tuple[int, int, float | None, float | None]:
+        values: dict[str, object] = {
+            "current": 20.7,
+            "target": 21.0,
+            "emergency": 14,
+            "hvac_off": False,
+            "manual": False,
+            "manual_position": 15,
+            "outdoor": 2,
+            "outdoor_mapping": self.outdoor,
+            "max_position": 100,
+        }
+        values.update(overrides)
+        return mapping.valve_positions(self.indoor, **values)  # type: ignore[arg-type]
+
+    def test_heat_commands_the_calculated_position(self) -> None:
+        command, calculated, difference, adjustment = self._positions()
+        self.assertEqual(difference, 0.3)
+        self.assertEqual(adjustment, 10)
+        self.assertEqual(calculated, 38)
+        self.assertEqual(command, 38)
+
+    def test_calculated_position_stays_visible_during_manual_hold(self) -> None:
+        command, calculated, difference, adjustment = self._positions(manual=True)
+        self.assertEqual(command, 15)
+        self.assertEqual(calculated, 38)
+        self.assertEqual(difference, 0.3)
+        self.assertEqual(adjustment, 10)
+
+    def test_manual_hold_on_a_mild_day_keeps_the_closed_calculation(self) -> None:
+        command, calculated, _, adjustment = self._positions(
+            manual=True,
+            manual_position=15,
+            current=20.0,
+            target=20.0,
+            outdoor=12,
+        )
+        self.assertEqual(calculated, 0)
+        self.assertEqual(adjustment, -15)
+        self.assertEqual(command, 15)
+
+    def test_manual_hold_cannot_pass_the_ceiling(self) -> None:
+        command, calculated, _, adjustment = self._positions(
+            manual=True,
+            manual_position=80,
+            current=18.0,
+            target=21.0,
+            outdoor=-8,
+            max_position=60,
+        )
+        self.assertEqual(adjustment, 35)
+        self.assertEqual(calculated, 60)
+        self.assertEqual(command, 60)
+
+    def test_off_closes_the_valve_and_still_reports_the_calculation(self) -> None:
+        command, calculated, difference, adjustment = self._positions(hvac_off=True)
+        self.assertEqual(command, 0)
+        self.assertEqual(calculated, 38)
+        self.assertEqual(difference, 0.3)
+        self.assertEqual(adjustment, 10)
+
+    def test_off_and_manual_still_closes_the_valve(self) -> None:
+        command, calculated, _, _ = self._positions(hvac_off=True, manual=True)
+        self.assertEqual(command, 0)
+        self.assertEqual(calculated, 38)
+
+    def test_missing_indoor_temperature_uses_emergency_in_the_calculation(self) -> None:
+        command, calculated, difference, adjustment = self._positions(
+            current=None,
+            outdoor=None,
+            max_position=40,
+        )
+        self.assertIsNone(difference)
+        self.assertIsNone(adjustment)
+        self.assertEqual(calculated, 14)
+        self.assertEqual(command, 14)
+
+    def test_off_with_a_missing_sensor_closes_instead_of_using_emergency(self) -> None:
+        command, calculated, difference, _ = self._positions(
+            current=None,
+            hvac_off=True,
+            outdoor=None,
+        )
+        self.assertIsNone(difference)
+        self.assertEqual(calculated, 14)
+        self.assertEqual(command, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

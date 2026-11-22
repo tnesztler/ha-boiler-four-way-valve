@@ -193,6 +193,55 @@ def apply_outdoor_and_limit(
     return limit_position(raw, max_position), adjustment
 
 
+def valve_positions(
+    mapping: Mapping[float, float],
+    *,
+    current: float | None,
+    target: float | None,
+    emergency: float | None,
+    hvac_off: bool,
+    manual: bool,
+    manual_position: float,
+    outdoor: float | None,
+    outdoor_mapping: Mapping[float, float] | None,
+    max_position: float | None,
+) -> tuple[int, int, float | None, float | None]:
+    """Return ``(command, calculated, difference, adjustment)``.
+
+    ``calculated`` is the heat-map opening after the outdoor trim and the
+    ceiling. ``command`` matches it, unless Manual is holding a position or
+    the mode is off. Off commands the lowest mapped position. Manual and off
+    still stay under the ceiling.
+    """
+    indoor, difference = cover_position(
+        mapping,
+        current=current,
+        target=target,
+        emergency=emergency,
+        hvac_off=False,
+    )
+    calculated, adjustment = apply_outdoor_and_limit(
+        indoor,
+        outdoor=outdoor,
+        outdoor_mapping=outdoor_mapping,
+        max_position=max_position,
+    )
+    if manual and not hvac_off:
+        command = limit_position(manual_position, max_position)
+    elif hvac_off:
+        closed, _difference = cover_position(
+            mapping,
+            current=current,
+            target=target,
+            emergency=emergency,
+            hvac_off=True,
+        )
+        command = limit_position(closed, max_position)
+    else:
+        command = calculated
+    return command, calculated, difference, adjustment
+
+
 def to_cover_percent(position: float) -> int:
     """Clamp to 0–100 and round half up to a whole percent."""
     if not math.isfinite(position):
