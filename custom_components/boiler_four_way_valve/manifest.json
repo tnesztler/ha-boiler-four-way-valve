@@ -10,6 +10,6 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/tnesztler/ha-boiler-four-way-valve/issues",
   "requirements": [],
-  "version": "0.1.0",
+  "version": "0.1.1",
   "categories": ["helpers.calculate_value", "climate.thermostats_heating"]
 }
