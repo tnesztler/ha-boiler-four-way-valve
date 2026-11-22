@@ -7,6 +7,9 @@
             "state": {
               "manual": "Manual"
             }
+          },
+          "calculated_position": {
+            "name": "Calculated position"
           }
         }
       }

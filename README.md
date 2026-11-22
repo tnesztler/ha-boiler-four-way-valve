@@ -59,7 +59,7 @@ Example: target 21.0 °C, room 20.7 °C. The difference is 0.3, so the cover is 
 
 ## Manual override
 
-**Manual position** is a slider from 0% to 100%, capped by the maximum position. In heat mode, set it to **15%** and the valve goes to 15%. The climate preset switches to **Manual**, and indoor and outdoor changes no longer move the valve.
+**Manual position** is a slider from 0% to 100%, capped by the maximum position. In heat mode, set it to **15%** and the valve goes to 15%. The climate preset switches to **Manual**, and indoor and outdoor changes no longer move the valve. `calculated_position` still shows the opening the maps would command, including the outdoor trim and the ceiling.
 
 Choosing **Manual** without moving the slider commands whatever position the slider already shows. Choosing another preset, or changing the target temperature, leaves Manual and follows the maps again. `off` still closes the valve; with Manual still selected, heat mode returns to that position.
 
@@ -189,7 +189,7 @@ On a restart, heat mode waits up to 30 seconds for the indoor sensor before the 
 
 Target temperature, HVAC mode, preset, and manual position are restored after a restart.
 
-The climate entity also reports `valve_position` (the last command, after the outdoor trim and the ceiling), `manual_position`, `temperature_difference`, `outdoor_temperature`, `outdoor_adjustment`, and `max_position`. `cover_position` is the position the main cover is reporting.
+The climate entity also reports `valve_position` (the last command, after the outdoor trim and the ceiling), `calculated_position` (the opening the maps would command), `manual_position`, `temperature_difference`, `outdoor_temperature`, `outdoor_adjustment`, and `max_position`. `cover_position` is the position the main cover is reporting.
 
 ## Credits
 

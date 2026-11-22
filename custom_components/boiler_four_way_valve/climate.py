@@ -56,6 +56,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
+    ATTR_CALCULATED_POSITION,
     ATTR_MANUAL_POSITION,
     CONF_ADDITIONAL_COVER_ENTITY_IDS,
     CONF_COVER_ENTITY_ID,
@@ -284,6 +285,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self._last_outdoor_at_update: float | None = None
         self._hvac_mode: HVACMode | None = None
         self._commanded_position: int | None = None
+        self._calculated_position: int | None = None
         self._manual_position = 0.0
         self._last_difference: float | None = None
         self._last_update_temp: float | None = None
@@ -505,6 +507,8 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         attributes: dict[str, int | float] = {}
         if self._commanded_position is not None:
             attributes["valve_position"] = self._commanded_position
+        if self._calculated_position is not None:
+            attributes[ATTR_CALCULATED_POSITION] = self._calculated_position
         reported = self._reported_position(self._cover_entity_id)
         if reported is not None:
             attributes["cover_position"] = reported
@@ -569,6 +573,8 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         if force:
             self._cancel_pending()
 
+        self._store_calculated_position()
+
         sensor_failed = self._current_temp is None
         if not force and (self._hvac_mode == HVACMode.OFF or self._manual_active):
             return
@@ -589,30 +595,20 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
                 return
 
         hvac_off = self._hvac_mode == HVACMode.OFF
-        adjustment: float | None = None
         if self._manual_active and not hvac_off:
             position = limit_position(self._manual_position, self._max_position)
-            difference = None
-        else:
-            position, difference = cover_position(
+        elif hvac_off:
+            position, _difference = cover_position(
                 self._mapping,
                 current=self._current_temp,
                 target=self._target_temp,
                 emergency=self._emergency_position,
-                hvac_off=hvac_off,
+                hvac_off=True,
             )
-            if hvac_off:
-                position = limit_position(position, self._max_position)
-            else:
-                position, adjustment = apply_outdoor_and_limit(
-                    position,
-                    outdoor=self._outdoor_temp,
-                    outdoor_mapping=self._outdoor_mapping,
-                    max_position=self._max_position,
-                )
+            position = limit_position(position, self._max_position)
+        else:
+            position = self._calculated_position or 0
         self._commanded_position = position
-        self._last_difference = difference
-        self._last_outdoor_adjustment = adjustment
 
         if self._covers_within_tolerance(position):
             self._cancel_pending()
@@ -705,6 +701,25 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
             return True
         delta = abs(self._current_temp - self._last_update_temp)
         return delta >= self._min_temp_change_step
+
+    def _store_calculated_position(self) -> None:
+        """Store the position the maps would command, without sending it."""
+        position, difference = cover_position(
+            self._mapping,
+            current=self._current_temp,
+            target=self._target_temp,
+            emergency=self._emergency_position,
+            hvac_off=False,
+        )
+        position, adjustment = apply_outdoor_and_limit(
+            position,
+            outdoor=self._outdoor_temp,
+            outdoor_mapping=self._outdoor_mapping,
+            max_position=self._max_position,
+        )
+        self._calculated_position = position
+        self._last_difference = difference
+        self._last_outdoor_adjustment = adjustment
 
     def _remember_temperatures(self) -> None:
         """Store the temperatures that produced the latest command."""
