@@ -1,0 +1,15 @@
+{
+  "domain": "boiler_four_way_valve",
+  "name": "Boiler Four-Way Valve",
+  "after_dependencies": [],
+  "codeowners": ["@tnesztler"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/tnesztler/ha-boiler-four-way-valve",
+  "integration_type": "helper",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/tnesztler/ha-boiler-four-way-valve/issues",
+  "requirements": [],
+  "version": "0.1.0",
+  "categories": ["helpers.calculate_value", "climate.thermostats_heating"]
+}
