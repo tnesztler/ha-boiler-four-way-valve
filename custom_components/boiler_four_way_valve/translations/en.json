@@ -10,6 +10,27 @@
           },
           "calculated_position": {
             "name": "Calculated position"
+          },
+          "current_command": {
+            "name": "Current command"
+          },
+          "cover_position": {
+            "name": "Cover position"
+          },
+          "temperature_difference": {
+            "name": "Temperature difference"
+          },
+          "outdoor_temperature": {
+            "name": "Outdoor temperature"
+          },
+          "outdoor_adjustment": {
+            "name": "Outdoor adjustment"
+          },
+          "manual_position": {
+            "name": "Manual position"
+          },
+          "max_position": {
+            "name": "Maximum position"
           }
         }
       }
@@ -106,12 +127,12 @@
         "title": "Presets",
         "description": "Manual is always available. It holds the valve at the Manual position and ignores the temperature maps. Leave another preset empty to hide it.",
         "data": {
-          "home_temp": "[%key:component::climate::entity_component::_::state_attributes::preset_mode::state::home%]",
-          "away_temp": "[%key:component::climate::entity_component::_::state_attributes::preset_mode::state::away%]",
-          "comfort_temp": "[%key:component::climate::entity_component::_::state_attributes::preset_mode::state::comfort%]",
-          "eco_temp": "[%key:component::climate::entity_component::_::state_attributes::preset_mode::state::eco%]",
-          "sleep_temp": "[%key:component::climate::entity_component::_::state_attributes::preset_mode::state::sleep%]",
-          "activity_temp": "[%key:component::climate::entity_component::_::state_attributes::preset_mode::state::activity%]"
+          "home_temp": "Home",
+          "away_temp": "Away",
+          "comfort_temp": "Comfort",
+          "eco_temp": "Eco",
+          "sleep_temp": "Sleep",
+          "activity_temp": "Activity"
         }
       }
     }

@@ -18,6 +18,7 @@ DOMAIN = "boiler_four_way_valve"
 PRESET_MANUAL = "manual"
 ATTR_MANUAL_POSITION = "manual_position"
 ATTR_CALCULATED_POSITION = "calculated_position"
+ATTR_CURRENT_COMMAND = "current_command"
 
 CONF_TEMPERATURE_SENSOR_ENTITY_ID = "temperature_sensor_entity_id"
 CONF_OUTDOOR_TEMPERATURE_SENSOR_ENTITY_ID = "outdoor_temperature_sensor_entity_id"

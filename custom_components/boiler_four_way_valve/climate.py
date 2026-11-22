@@ -57,6 +57,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     ATTR_CALCULATED_POSITION,
+    ATTR_CURRENT_COMMAND,
     ATTR_MANUAL_POSITION,
     CONF_ADDITIONAL_COVER_ENTITY_IDS,
     CONF_COVER_ENTITY_ID,
@@ -502,10 +503,14 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, int | float]:
-        """Return the commanded position and the temperature difference."""
+        """Return the command, the map opening, and the temperature difference."""
         attributes: dict[str, int | float] = {}
-        if self._commanded_position is not None:
-            attributes["valve_position"] = self._commanded_position
+        command = self._commanded_position
+        if command is None:
+            command = self._next_command
+        if command is not None:
+            attributes[ATTR_CURRENT_COMMAND] = command
+            attributes["valve_position"] = command
         if self._calculated_position is not None:
             attributes[ATTR_CALCULATED_POSITION] = self._calculated_position
         reported = self._reported_position(self._cover_entity_id)

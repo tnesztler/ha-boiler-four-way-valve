@@ -4,7 +4,7 @@
   "after_dependencies": [],
   "codeowners": ["@tnesztler"],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["http", "frontend"],
   "documentation": "https://github.com/tnesztler/ha-boiler-four-way-valve",
   "integration_type": "helper",
   "iot_class": "calculated",
