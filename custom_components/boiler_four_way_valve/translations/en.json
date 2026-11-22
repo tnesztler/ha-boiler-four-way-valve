@@ -90,9 +90,6 @@
           "emergency_position": "Position used when the indoor sensor is unavailable, unknown, or not numeric. Outdoor trim and the maximum position still apply.",
           "min_temp_change_step": "Ignore room-temperature changes smaller than this since the last move. 0 updates on every change. Mode, preset, and target changes still apply immediately.",
           "position_tolerance": "Do not send a new position when the cover is already within this many percent of the target."
-        },
-        "error": {
-          "same_temperature_sensor": "[%key:component::boiler_four_way_valve::config::error::same_temperature_sensor%]"
         }
       },
       "outdoor": {
@@ -105,10 +102,6 @@
         "data_description": {
           "outdoor_temperature_sensor_entity_id": "Outside air temperature. Optional.",
           "outdoor_adjustment_mapping": "Keys are outdoor °C. Values are percent points added to the indoor position, from -100 to 100. A key applies from that temperature up to the next warmer key."
-        },
-        "error": {
-          "invalid_outdoor_adjustment": "[%key:component::boiler_four_way_valve::config::error::invalid_outdoor_adjustment%]",
-          "same_temperature_sensor": "[%key:component::boiler_four_way_valve::config::error::same_temperature_sensor%]"
         }
       },
       "valve_position": {
@@ -119,9 +112,6 @@
         },
         "data_description": {
           "position_mapping": "Default opening for each indoor temperature difference. Adjust it after the valve has run for a while."
-        },
-        "error": {
-          "invalid_position_mapping": "[%key:component::boiler_four_way_valve::config::error::invalid_position_mapping%]"
         }
       },
       "thermostat": {
@@ -135,9 +125,6 @@
           "min_temp": "Lowest target temperature that can be set.",
           "max_temp": "Highest target temperature that can be set.",
           "target_temp_step": "Step used when changing the target temperature."
-        },
-        "error": {
-          "invalid_temperature_range": "[%key:component::boiler_four_way_valve::config::error::invalid_temperature_range%]"
         }
       },
       "presets": {
@@ -194,9 +181,6 @@
           "emergency_position": "[%key:component::boiler_four_way_valve::config::step::user::data_description::emergency_position%]",
           "min_temp_change_step": "[%key:component::boiler_four_way_valve::config::step::user::data_description::min_temp_change_step%]",
           "position_tolerance": "[%key:component::boiler_four_way_valve::config::step::user::data_description::position_tolerance%]"
-        },
-        "error": {
-          "same_temperature_sensor": "[%key:component::boiler_four_way_valve::config::error::same_temperature_sensor%]"
         }
       },
       "outdoor": {
@@ -209,10 +193,6 @@
         "data_description": {
           "outdoor_temperature_sensor_entity_id": "[%key:component::boiler_four_way_valve::config::step::outdoor::data_description::outdoor_temperature_sensor_entity_id%]",
           "outdoor_adjustment_mapping": "[%key:component::boiler_four_way_valve::config::step::outdoor::data_description::outdoor_adjustment_mapping%]"
-        },
-        "error": {
-          "invalid_outdoor_adjustment": "[%key:component::boiler_four_way_valve::config::error::invalid_outdoor_adjustment%]",
-          "same_temperature_sensor": "[%key:component::boiler_four_way_valve::config::error::same_temperature_sensor%]"
         }
       },
       "valve_position": {
@@ -223,9 +203,6 @@
         },
         "data_description": {
           "position_mapping": "[%key:component::boiler_four_way_valve::config::step::valve_position::data_description::position_mapping%]"
-        },
-        "error": {
-          "invalid_position_mapping": "[%key:component::boiler_four_way_valve::config::error::invalid_position_mapping%]"
         }
       },
       "thermostat": {
@@ -239,9 +216,6 @@
           "min_temp": "[%key:component::boiler_four_way_valve::config::step::thermostat::data_description::min_temp%]",
           "max_temp": "[%key:component::boiler_four_way_valve::config::step::thermostat::data_description::max_temp%]",
           "target_temp_step": "[%key:component::boiler_four_way_valve::config::step::thermostat::data_description::target_temp_step%]"
-        },
-        "error": {
-          "invalid_temperature_range": "[%key:component::boiler_four_way_valve::config::error::invalid_temperature_range%]"
         }
       },
       "presets": {
