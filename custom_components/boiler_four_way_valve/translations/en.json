@@ -144,10 +144,10 @@
   },
   "options": {
     "error": {
-      "invalid_position_mapping": "[%key:component::boiler_four_way_valve::config::error::invalid_position_mapping%]",
-      "invalid_outdoor_adjustment": "[%key:component::boiler_four_way_valve::config::error::invalid_outdoor_adjustment%]",
-      "invalid_temperature_range": "[%key:component::boiler_four_way_valve::config::error::invalid_temperature_range%]",
-      "same_temperature_sensor": "[%key:component::boiler_four_way_valve::config::error::same_temperature_sensor%]"
+      "invalid_position_mapping": "Enter at least one temperature difference, each mapped to a cover position from 0 (closed) to 100 (open).",
+      "invalid_outdoor_adjustment": "Enter at least one outdoor temperature, each mapped to an adjustment from -100 to 100.",
+      "invalid_temperature_range": "Minimum temperature must be lower than maximum temperature.",
+      "same_temperature_sensor": "The outdoor sensor must be a different entity from the indoor sensor."
     },
     "step": {
       "init": {
@@ -160,7 +160,7 @@
         }
       },
       "cover": {
-        "description": "[%key:component::boiler_four_way_valve::config::step::user::description%]",
+        "description": "0% keeps the boiler and radiator loops separate. 100% joins them into one loop. The command is never sent above the maximum position; 100 disables that limit.",
         "data": {
           "temperature_sensor_entity_id": "Indoor temperature sensor",
           "precision": "Temperature sensor precision",
@@ -173,37 +173,37 @@
           "position_tolerance": "Position tolerance"
         },
         "data_description": {
-          "temperature_sensor_entity_id": "[%key:component::boiler_four_way_valve::config::step::user::data_description::temperature_sensor_entity_id%]",
-          "max_position": "[%key:component::boiler_four_way_valve::config::step::user::data_description::max_position%]",
-          "precision": "[%key:component::boiler_four_way_valve::config::step::user::data_description::precision%]",
-          "cover_entity_id": "[%key:component::boiler_four_way_valve::config::step::user::data_description::cover_entity_id%]",
-          "additional_cover_entity_ids": "[%key:component::boiler_four_way_valve::config::step::user::data_description::additional_cover_entity_ids%]",
-          "min_cycle_duration": "[%key:component::boiler_four_way_valve::config::step::user::data_description::min_cycle_duration%]",
-          "emergency_position": "[%key:component::boiler_four_way_valve::config::step::user::data_description::emergency_position%]",
-          "min_temp_change_step": "[%key:component::boiler_four_way_valve::config::step::user::data_description::min_temp_change_step%]",
-          "position_tolerance": "[%key:component::boiler_four_way_valve::config::step::user::data_description::position_tolerance%]"
+          "temperature_sensor_entity_id": "Indoor temperature, in the living space rather than on the boiler.",
+          "max_position": "Safety ceiling. The valve is never commanded above this. 100 disables the limit.",
+          "precision": "Display precision of the current temperature, usually 0.1 or 1.",
+          "cover_entity_id": "Cover entity that moves the valve. Position 0 is closed and 100 is open.",
+          "additional_cover_entity_ids": "Other covers in the same room. They receive the same position as the main cover.",
+          "min_cycle_duration": "Minimum time between automatic moves. Changes of mode, preset, or target temperature apply immediately. Set to 0 to disable.",
+          "emergency_position": "Position used when the indoor sensor is unavailable, unknown, or not numeric. Outdoor trim and the maximum position still apply.",
+          "min_temp_change_step": "Ignore room-temperature changes smaller than this since the last move. 0 updates on every change. Mode, preset, and target changes still apply immediately.",
+          "position_tolerance": "Do not send a new position when the cover is already within this many percent of the target."
         }
       },
       "outdoor": {
-        "title": "[%key:component::boiler_four_way_valve::config::step::outdoor::title%]",
-        "description": "[%key:component::boiler_four_way_valve::config::step::outdoor::description%]",
+        "title": "Outdoor temperature",
+        "description": "Outdoor temperature is added to the indoor position. A negative adjustment closes the mixing valve on a mild day. Leave the sensor empty to use the indoor map only. The result is still kept at or below the maximum position.",
         "data": {
-          "outdoor_temperature_sensor_entity_id": "[%key:component::boiler_four_way_valve::config::step::outdoor::data::outdoor_temperature_sensor_entity_id%]",
-          "outdoor_adjustment_mapping": "[%key:component::boiler_four_way_valve::config::step::outdoor::data::outdoor_adjustment_mapping%]"
+          "outdoor_temperature_sensor_entity_id": "Outdoor temperature sensor",
+          "outdoor_adjustment_mapping": "Outdoor adjustment"
         },
         "data_description": {
-          "outdoor_temperature_sensor_entity_id": "[%key:component::boiler_four_way_valve::config::step::outdoor::data_description::outdoor_temperature_sensor_entity_id%]",
-          "outdoor_adjustment_mapping": "[%key:component::boiler_four_way_valve::config::step::outdoor::data_description::outdoor_adjustment_mapping%]"
+          "outdoor_temperature_sensor_entity_id": "Outside air temperature. Optional.",
+          "outdoor_adjustment_mapping": "Keys are outdoor °C. Values are percent points added to the indoor position, from -100 to 100. A key applies from that temperature up to the next warmer key."
         }
       },
       "valve_position": {
         "title": "Valve position mapping",
-        "description": "[%key:component::boiler_four_way_valve::config::step::valve_position::description%]",
+        "description": "Keys are target minus current temperature, rounded to 0.1 °C. Values are cover positions from 0 (closed) to 100 (open). A value applies when the difference is greater than its key, up to and including the next key.",
         "data": {
           "position_mapping": "Position mapping"
         },
         "data_description": {
-          "position_mapping": "[%key:component::boiler_four_way_valve::config::step::valve_position::data_description::position_mapping%]"
+          "position_mapping": "Default opening for each indoor temperature difference. Adjust it after the valve has run for a while."
         }
       },
       "thermostat": {
@@ -214,19 +214,19 @@
           "target_temp_step": "Target temperature step"
         },
         "data_description": {
-          "min_temp": "[%key:component::boiler_four_way_valve::config::step::thermostat::data_description::min_temp%]",
-          "max_temp": "[%key:component::boiler_four_way_valve::config::step::thermostat::data_description::max_temp%]",
-          "target_temp_step": "[%key:component::boiler_four_way_valve::config::step::thermostat::data_description::target_temp_step%]"
+          "min_temp": "Lowest target temperature that can be set.",
+          "max_temp": "Highest target temperature that can be set.",
+          "target_temp_step": "Step used when changing the target temperature."
         }
       },
       "presets": {
         "title": "Presets",
-        "description": "[%key:component::boiler_four_way_valve::config::step::presets::description%]",
+        "description": "Manual is always available. It holds the valve at the Manual position and ignores the temperature maps. Leave another preset empty to hide it.",
         "data": {
-          "home_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::home_temp%]",
-          "away_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::away_temp%]",
-          "comfort_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::comfort_temp%]",
-          "eco_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::eco_temp%]"
+          "home_temp": "Home",
+          "away_temp": "Away",
+          "comfort_temp": "Comfort",
+          "eco_temp": "Eco"
         }
       }
     }
