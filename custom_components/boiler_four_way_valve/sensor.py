@@ -14,12 +14,14 @@ from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.loader import async_get_integration
 
 from .const import (
     ATTR_CALCULATED_POSITION,
     ATTR_CURRENT_COMMAND,
     CONF_COVER_ENTITY_ID,
     DOMAIN,
+    SENSOR_INTEGRATION_VERSION,
     SENSOR_MAXIMUM_POSITION,
     SENSOR_OUTDOOR_OFFSET,
     SENSOR_TEMPERATURE_OFFSET,
@@ -110,6 +112,7 @@ async def async_setup_entry(
     temperature_unit = hass.config.units.temperature_unit
     runtime: ValveRuntime = hass.data[DOMAIN][config_entry.entry_id]
     runtime.tracked = TrackedSensors()
+    integration = await async_get_integration(hass, DOMAIN)
     async_add_entities(
         [
             TrackedValveSensor(
@@ -119,6 +122,13 @@ async def async_setup_entry(
                 device_info=device_info,
             )
             for kind in _KINDS
+        ]
+        + [
+            IntegrationVersionSensor(
+                entry_id=config_entry.entry_id,
+                version=integration.version or "0",
+                device_info=device_info,
+            )
         ]
     )
 
@@ -181,3 +191,27 @@ class TrackedValveSensor(SensorEntity):
         self._attr_native_value = new
         if self.hass is not None:
             self.async_write_ha_state()
+
+
+class IntegrationVersionSensor(SensorEntity):
+    """Installed helper version, stored in history with the valve sensors.
+
+    The state changes only when the integration version changes, so a later
+    pass over temperature history can tell which release was running.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_translation_key = SENSOR_INTEGRATION_VERSION
+    _attr_icon = "mdi:package-variant"
+
+    def __init__(
+        self,
+        entry_id: str,
+        version: str,
+        device_info: DeviceInfo | None,
+    ) -> None:
+        """Initialize the sensor."""
+        self._attr_unique_id = f"{entry_id}_{SENSOR_INTEGRATION_VERSION}"
+        self._attr_native_value = version
+        self._attr_device_info = device_info

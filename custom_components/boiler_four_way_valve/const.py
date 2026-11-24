@@ -22,6 +22,7 @@ ATTR_CURRENT_COMMAND = "current_command"
 SENSOR_TEMPERATURE_OFFSET = "temperature_offset"
 SENSOR_OUTDOOR_OFFSET = "outdoor_offset"
 SENSOR_MAXIMUM_POSITION = "maximum_position"
+SENSOR_INTEGRATION_VERSION = "integration_version"
 
 CONF_TEMPERATURE_SENSOR_ENTITY_ID = "temperature_sensor_entity_id"
 CONF_OUTDOOR_TEMPERATURE_SENSOR_ENTITY_ID = "outdoor_temperature_sensor_entity_id"

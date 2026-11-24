@@ -55,6 +55,9 @@
       },
       "maximum_position": {
         "name": "Maximum position"
+      },
+      "integration_version": {
+        "name": "Integration version"
       }
     }
   },

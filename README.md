@@ -193,6 +193,8 @@ The climate entity also reports `current_command` (the position last sent to the
 
 Five sensors record the same numbers so History and long-term statistics can graph them: **Current command**, **Calculated position**, **Temperature offset** (target minus indoor temperature), **Outdoor offset** (percent points added from the outdoor map), and **Maximum position**. Temperature offset is unknown while the indoor temperature is missing. Outdoor offset is unknown while the outdoor temperature is missing.
 
+**Integration version** reports the installed version of this helper. The state stays the same until the integration is updated, so temperature history can be compared across releases.
+
 Those values are drawn above the built-in thermostat. A Thermostat card for this climate entity shows the panel over the dial, and opening the entity shows the same panel at the top of the dialog. Restart Home Assistant after installing or updating, then refresh the browser. If the dial is cramped, make the card taller.
 
 ## Credits
