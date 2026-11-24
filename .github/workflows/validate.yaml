@@ -17,6 +17,13 @@ jobs:
           python-version: "3.15"
       - run: python -m unittest discover -s tests -v
 
+  setup:
+    name: Setup in Home Assistant container
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: tests/run_setup_check.sh
+
   hassfest:
     name: Hassfest
     runs-on: ubuntu-latest

@@ -13,6 +13,6 @@ When changing the control law:
 - `calculated_position` may exceed the safety ceiling. The command sent to the valve may not.
 - Do not pre-heat ahead of colder weather. An oil burner does not get cheaper by heating earlier.
 
-Run `python -m unittest discover -s tests -v`. `tests/test_mapping.py` covers the curve, the command, and when another opening step is still owed. Those tests do not import Home Assistant.
+Run `python -m unittest discover -s tests -v`. `tests/test_mapping.py` covers the curve, the command, and when another opening step is still owed.
 
-Before every release, check the imports against Home Assistant 2026.11, the version in `hacs.json`. Load each module in `custom_components/boiler_four_way_valve` with that Home Assistant on `sys.path`, or resolve each imported name in the 2026.11 source. A missing name means the helper fails to start and the climate entity stays unavailable. Do not tag or publish until the imports load.
+Before every release, run `tests/run_setup_check.sh`. It starts the Home Assistant image for the version in `hacs.json` and fails if climate, the manual position, or any recorded sensor is missing or unavailable. Do not tag or publish until that check passes.
