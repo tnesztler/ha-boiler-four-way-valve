@@ -137,9 +137,7 @@
           "home_temp": "Home",
           "away_temp": "Away",
           "comfort_temp": "Comfort",
-          "eco_temp": "Eco",
-          "sleep_temp": "Sleep",
-          "activity_temp": "Activity"
+          "eco_temp": "Eco"
         }
       }
     }
@@ -228,9 +226,7 @@
           "home_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::home_temp%]",
           "away_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::away_temp%]",
           "comfort_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::comfort_temp%]",
-          "eco_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::eco_temp%]",
-          "sleep_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::sleep_temp%]",
-          "activity_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::activity_temp%]"
+          "eco_temp": "[%key:component::boiler_four_way_valve::config::step::presets::data::eco_temp%]"
         }
       }
     }

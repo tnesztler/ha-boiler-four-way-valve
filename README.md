@@ -185,7 +185,7 @@ On a restart, heat mode waits up to 30 seconds for the indoor sensor before the 
 
 ### Presets
 
-`manual`, `home`, `away`, `comfort`, `eco`, `sleep`, and `activity`. Manual is always shown. A temperature preset without a temperature is hidden. Choosing no preset restores the target from before the preset.
+`manual`, `home`, `away`, `comfort`, and `eco`. Manual is always shown. A temperature preset without a temperature is hidden. Choosing no preset restores the target from before the preset.
 
 Target temperature, HVAC mode, preset, and manual position are restored after a restart.
 

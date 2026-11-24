@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from homeassistant.components.climate.const import (
-    PRESET_ACTIVITY,
     PRESET_AWAY,
     PRESET_COMFORT,
     PRESET_ECO,
     PRESET_HOME,
-    PRESET_SLEEP,
 )
 
 from .mapping import DEFAULT_EMERGENCY_POSITION, DEFAULT_MAX_POSITION
@@ -51,8 +49,6 @@ CONF_PRESETS = {
         PRESET_COMFORT,
         PRESET_ECO,
         PRESET_HOME,
-        PRESET_SLEEP,
-        PRESET_ACTIVITY,
     )
 }
 
