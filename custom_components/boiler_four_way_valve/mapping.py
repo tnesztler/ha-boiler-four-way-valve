@@ -2,9 +2,14 @@
 
 0 is closed and 100 is open.
 
-A stored position applies when the temperature difference (target − current,
-rounded to 0.1 °C) is greater than that key, up to and including the next key.
-At or below the lowest key, the lowest position in the map is used.
+A key is the opening at that exact temperature difference, or at that outdoor
+temperature. Between two keys the value moves in a straight line. Outside the
+keys, the nearest end of the line is kept.
+
+The command then saves oil. Inside a deadband below the target the valve stays
+where it is. At or above the target it follows the curve closed in one move.
+Further below the target it may open by only a few points per cycle, and it
+may close by as many points as the curve asks.
 """
 
 from __future__ import annotations
@@ -17,24 +22,28 @@ from typing import Any
 CLOSED_POSITION = 0
 OPEN_POSITION = 100
 
+# Opening at each target − current difference. Shallow through the deadband,
+# then a recovery slope. Between these keys the opening is a straight line.
 DEFAULT_POSITION_MAPPING: dict[str, int] = {
     "-0.2": 0,
-    "-0.1": 8,
-    "0.0": 14,
-    "0.1": 19,
-    "0.2": 28,
-    "0.4": 44,
-    "0.7": 50,
-    "1.0": 56,
-    "1.3": 67,
-    "1.7": 83,
+    "0.0": 8,
+    "0.3": 12,
+    "0.7": 28,
+    "1.2": 50,
+    "1.7": 75,
     "2.0": 100,
 }
 
 DEFAULT_EMERGENCY_POSITION = 14
 
+# Room may sit this far below the target without the valve opening further.
+DEFAULT_TEMPERATURE_DEADBAND = 0.3
+
+# Largest opening added in one automatic cycle while the room is below the band.
+DEFAULT_MAX_POSITION_INCREASE = 5
+
 # Added to the indoor position. Negative values close the valve.
-# A key applies from that outdoor temperature up to the next warmer key.
+# Between keys the adjustment moves in a straight line.
 DEFAULT_OUTDOOR_ADJUSTMENT: dict[str, int] = {
     "-10": 35,
     "-5": 20,
@@ -72,23 +81,36 @@ def parse_outdoor_adjustment(raw: Mapping[Any, Any]) -> dict[float, float]:
     )
 
 
+def interpolate(mapping: Mapping[float, float], point: float) -> float:
+    """Return the straight-line value of ``mapping`` at ``point``."""
+    if not mapping:
+        raise InvalidPositionMapping("Mapping is empty")
+
+    keys = sorted(mapping)
+    if point <= keys[0]:
+        return float(mapping[keys[0]])
+    if point >= keys[-1]:
+        return float(mapping[keys[-1]])
+
+    for index in range(1, len(keys)):
+        right = keys[index]
+        if point <= right:
+            left = keys[index - 1]
+            span = right - left
+            if span == 0:
+                return float(mapping[right])
+            weight = (point - left) / span
+            left_value = float(mapping[left])
+            right_value = float(mapping[right])
+            return left_value + weight * (right_value - left_value)
+    return float(mapping[keys[-1]])
+
+
 def position_for_difference(
     mapping: Mapping[float, float], difference: float
 ) -> float:
-    """Return the mapped position for a target − current difference."""
-    if not mapping:
-        raise InvalidPositionMapping("Position mapping is empty")
-
-    keys = sorted(mapping)
-    if difference <= keys[0]:
-        return min(mapping.values())
-    if difference >= keys[-1]:
-        return float(mapping[keys[-1]])
-
-    for index, key in enumerate(keys):
-        if difference <= key:
-            return float(mapping[keys[index - 1]])
-    return max(mapping.values())
+    """Return the opening on the indoor curve for target − current."""
+    return interpolate(mapping, difference)
 
 
 def cover_position(
@@ -127,25 +149,8 @@ def cover_position(
 def adjustment_for_outdoor(
     mapping: Mapping[float, float], outdoor: float
 ) -> float:
-    """Return the adjustment for an outdoor temperature.
-
-    The value of a key applies from that temperature up to, but not including,
-    the next warmer key. Colder than every key uses the coldest key.
-    """
-    if not mapping:
-        raise InvalidPositionMapping("Outdoor adjustment mapping is empty")
-
-    keys = sorted(mapping)
-    if outdoor < keys[0]:
-        return float(mapping[keys[0]])
-
-    selected = keys[0]
-    for key in keys:
-        if outdoor >= key:
-            selected = key
-        else:
-            break
-    return float(mapping[selected])
+    """Return the outdoor adjustment on the straight line between keys."""
+    return interpolate(mapping, outdoor)
 
 
 def limit_position(position: float, max_position: float | None) -> int:
@@ -193,6 +198,36 @@ def apply_outdoor_and_limit(
     return limit_position(raw, max_position), adjustment
 
 
+def economy_command(
+    desired: int,
+    *,
+    difference: float,
+    previous: int | None,
+    deadband: float,
+    max_increase: float,
+    holding: int,
+) -> int:
+    """Return the opening to send before the safety ceiling.
+
+    At or above the target, move straight to ``desired``. Inside the deadband
+    below the target, keep ``previous``, or ``holding`` when the valve has no
+    position yet. Further below, step up by at most ``max_increase`` points
+    and step down to ``desired`` in one move.
+    """
+    if difference <= 0:
+        return desired
+    if deadband > 0 and difference <= deadband:
+        if previous is None:
+            return holding
+        return previous
+
+    start = holding if previous is None else previous
+    if desired > start:
+        allowance = max(0.0, float(max_increase))
+        return to_cover_percent(min(float(desired), float(start) + allowance))
+    return desired
+
+
 def valve_positions(
     mapping: Mapping[float, float],
     *,
@@ -205,13 +240,17 @@ def valve_positions(
     outdoor: float | None,
     outdoor_mapping: Mapping[float, float] | None,
     max_position: float | None,
+    previous: int | None = None,
+    deadband: float = DEFAULT_TEMPERATURE_DEADBAND,
+    max_increase: float = DEFAULT_MAX_POSITION_INCREASE,
 ) -> tuple[int, int, float | None, float | None]:
     """Return ``(command, calculated, difference, adjustment)``.
 
-    ``calculated`` is the heat-map opening after the outdoor trim and the
-    ceiling. ``command`` matches it, unless Manual is holding a position or
-    the mode is off. Off commands the lowest mapped position. Manual and off
-    still stay under the ceiling.
+    ``calculated`` is the curve after the outdoor trim, clamped to 0–100.
+    It keeps climbing past the safety ceiling so the unmet opening stays
+    visible. ``command`` is what the valve is sent: the curve, then the
+    deadband and the slow open, then the ceiling. Manual holds its position
+    under the ceiling. Off commands the lowest mapped position.
     """
     indoor, difference = cover_position(
         mapping,
@@ -224,7 +263,7 @@ def valve_positions(
         indoor,
         outdoor=outdoor,
         outdoor_mapping=outdoor_mapping,
-        max_position=max_position,
+        max_position=None,
     )
     if manual and not hvac_off:
         command = limit_position(manual_position, max_position)
@@ -237,8 +276,24 @@ def valve_positions(
             hvac_off=True,
         )
         command = limit_position(closed, max_position)
+    elif difference is None:
+        command = limit_position(calculated, max_position)
     else:
-        command = calculated
+        at_target, _ignored = apply_outdoor_and_limit(
+            to_cover_percent(position_for_difference(mapping, 0.0)),
+            outdoor=outdoor,
+            outdoor_mapping=outdoor_mapping,
+            max_position=None,
+        )
+        shaped = economy_command(
+            calculated,
+            difference=difference,
+            previous=previous,
+            deadband=deadband,
+            max_increase=max_increase,
+            holding=at_target,
+        )
+        command = limit_position(shaped, max_position)
     return command, calculated, difference, adjustment
 
 

@@ -26,30 +26,25 @@ from .const import (
     CONF_COVER_ENTITY_ID,
     CONF_EMERGENCY_POSITION,
     CONF_MAX_POSITION,
+    CONF_MAX_POSITION_INCREASE,
     CONF_MAX_TEMP,
     CONF_MIN_CYCLE_DURATION,
     CONF_MIN_TEMP,
     CONF_MIN_TEMP_CHANGE_STEP,
-    CONF_OUTDOOR_ADJUSTMENT_MAPPING,
     CONF_OUTDOOR_TEMPERATURE_SENSOR_ENTITY_ID,
-    CONF_POSITION_MAPPING,
     CONF_POSITION_TOLERANCE,
     CONF_PRECISION,
     CONF_PRESETS,
     CONF_TARGET_TEMP_STEP,
+    CONF_TEMPERATURE_DEADBAND,
     CONF_TEMPERATURE_SENSOR_ENTITY_ID,
+    DEFAULT_DEADBAND,
     DEFAULT_EMERGENCY,
+    DEFAULT_INCREASE,
     DEFAULT_MAX,
     DEFAULT_MIN_TEMP_CHANGE_STEP,
     DEFAULT_POSITION_TOLERANCE,
     DOMAIN,
-)
-from .mapping import (
-    DEFAULT_OUTDOOR_ADJUSTMENT,
-    DEFAULT_POSITION_MAPPING,
-    InvalidPositionMapping,
-    parse_outdoor_adjustment,
-    parse_position_mapping,
 )
 
 _TEMPERATURE_DOMAINS = [SENSOR_DOMAIN, NUMBER_DOMAIN, INPUT_NUMBER_DOMAIN]
@@ -78,6 +73,28 @@ COVER_SCHEMA = vol.Schema(
             CONF_MIN_CYCLE_DURATION, default={"minutes": 2}
         ): selector.DurationSelector(
             selector.DurationSelectorConfig(allow_negative=False)
+        ),
+        vol.Optional(
+            CONF_TEMPERATURE_DEADBAND, default=DEFAULT_DEADBAND
+        ): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                mode=selector.NumberSelectorMode.BOX,
+                min=0,
+                max=2,
+                step=0.1,
+                unit_of_measurement=DEGREE,
+            )
+        ),
+        vol.Optional(
+            CONF_MAX_POSITION_INCREASE, default=DEFAULT_INCREASE
+        ): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                mode=selector.NumberSelectorMode.BOX,
+                min=1,
+                max=100,
+                step=1,
+                unit_of_measurement=PERCENTAGE,
+            )
         ),
         vol.Optional(CONF_MAX_POSITION, default=DEFAULT_MAX): selector.NumberSelector(
             selector.NumberSelectorConfig(
@@ -131,18 +148,6 @@ OUTDOOR_SCHEMA = vol.Schema(
         ): selector.EntitySelector(
             selector.EntitySelectorConfig(domain=_TEMPERATURE_DOMAINS)
         ),
-        vol.Optional(
-            CONF_OUTDOOR_ADJUSTMENT_MAPPING,
-            default=dict(DEFAULT_OUTDOOR_ADJUSTMENT),
-        ): selector.ObjectSelector(selector.ObjectSelectorConfig()),
-    }
-)
-
-VALVE_POSITION_SCHEMA = vol.Schema(
-    {
-        vol.Optional(
-            CONF_POSITION_MAPPING, default=dict(DEFAULT_POSITION_MAPPING)
-        ): selector.ObjectSelector(selector.ObjectSelectorConfig()),
     }
 )
 
@@ -211,26 +216,10 @@ async def async_validate_cover(
     return user_input
 
 
-async def async_validate_mapping(
-    _handler: Any, user_input: dict[str, Any]
-) -> dict[str, Any]:
-    """Require a 0–100 cover position for every temperature difference."""
-    try:
-        parse_position_mapping(user_input[CONF_POSITION_MAPPING])
-    except InvalidPositionMapping as err:
-        raise SchemaFlowError("invalid_position_mapping") from err
-    return user_input
-
-
 async def async_validate_outdoor(
     _handler: Any, user_input: dict[str, Any]
 ) -> dict[str, Any]:
-    """Require a valid outdoor adjustment, and a sensor distinct from the indoor one."""
-    try:
-        parse_outdoor_adjustment(user_input[CONF_OUTDOOR_ADJUSTMENT_MAPPING])
-    except (InvalidPositionMapping, KeyError) as err:
-        raise SchemaFlowError("invalid_outdoor_adjustment") from err
-
+    """Require an outdoor sensor distinct from the indoor one."""
     outdoor = user_input.get(CONF_OUTDOOR_TEMPERATURE_SENSOR_ENTITY_ID)
     indoor = _handler.options.get(CONF_TEMPERATURE_SENSOR_ENTITY_ID)
     if outdoor and indoor and outdoor == indoor:
@@ -251,11 +240,6 @@ CONFIG_FLOW: dict[str, SchemaFlowFormStep | SchemaFlowMenuStep] = {
     "user": SchemaFlowFormStep(
         CONFIG_SCHEMA,
         validate_user_input=async_validate_cover,
-        next_step="valve_position",
-    ),
-    "valve_position": SchemaFlowFormStep(
-        VALVE_POSITION_SCHEMA,
-        validate_user_input=async_validate_mapping,
         next_step="outdoor",
     ),
     "outdoor": SchemaFlowFormStep(
@@ -273,13 +257,10 @@ CONFIG_FLOW: dict[str, SchemaFlowFormStep | SchemaFlowMenuStep] = {
 
 OPTIONS_FLOW: dict[str, SchemaFlowFormStep | SchemaFlowMenuStep] = {
     "init": SchemaFlowMenuStep(
-        options=["cover", "valve_position", "outdoor", "thermostat", "presets"]
+        options=["cover", "outdoor", "thermostat", "presets"]
     ),
     "cover": SchemaFlowFormStep(
         COVER_SCHEMA, validate_user_input=async_validate_cover
-    ),
-    "valve_position": SchemaFlowFormStep(
-        VALVE_POSITION_SCHEMA, validate_user_input=async_validate_mapping
     ),
     "outdoor": SchemaFlowFormStep(
         OUTDOOR_SCHEMA, validate_user_input=async_validate_outdoor

@@ -63,8 +63,6 @@
   },
   "config": {
     "error": {
-      "invalid_position_mapping": "Enter at least one temperature difference, each mapped to a cover position from 0 (closed) to 100 (open).",
-      "invalid_outdoor_adjustment": "Enter at least one outdoor temperature, each mapped to an adjustment from -100 to 100.",
       "invalid_temperature_range": "Minimum temperature must be lower than maximum temperature.",
       "same_temperature_sensor": "The outdoor sensor must be a different entity from the indoor sensor."
     },
@@ -78,6 +76,8 @@
           "cover_entity_id": "Valve cover",
           "additional_cover_entity_ids": "Additional valve covers",
           "min_cycle_duration": "Minimum cycle duration",
+          "temperature_deadband": "Temperature deadband",
+          "max_position_increase": "Maximum position increase",
           "max_position": "Maximum cover position",
           "emergency_position": "Emergency cover position",
           "min_temp_change_step": "Minimum temperature change",
@@ -89,7 +89,9 @@
           "precision": "Display precision of the current temperature, usually 0.1 or 1.",
           "cover_entity_id": "Cover entity that moves the valve. Position 0 is closed and 100 is open.",
           "additional_cover_entity_ids": "Other covers in the same room. They receive the same position as the main cover.",
-          "min_cycle_duration": "Minimum time between automatic moves. Changes of mode, preset, or target temperature apply immediately. Set to 0 to disable.",
+          "min_cycle_duration": "Minimum time between automatic moves. Changes of mode, preset, or target skip this wait. Opening is still limited to the maximum increase. Set to 0 to disable the wait.",
+          "temperature_deadband": "The room may sit this far below the target without the valve opening further. At or above the target the valve follows the curve closed. 0 disables the band.",
+          "max_position_increase": "Largest opening added in one move while the room is below the deadband. Closing is not limited. 100 lets the valve jump straight to the curve.",
           "emergency_position": "Position used when the indoor sensor is unavailable, unknown, or not numeric. Outdoor trim and the maximum position still apply.",
           "min_temp_change_step": "Ignore room-temperature changes smaller than this since the last move. 0 updates on every change. Mode, preset, and target changes still apply immediately.",
           "position_tolerance": "Do not send a new position when the cover is already within this many percent of the target."
@@ -97,24 +99,12 @@
       },
       "outdoor": {
         "title": "Outdoor temperature",
-        "description": "Outdoor temperature is added to the indoor position. A negative adjustment closes the mixing valve on a mild day. Leave the sensor empty to use the indoor map only. The result is still kept at or below the maximum position.",
+        "description": "Outdoor temperature is added to the indoor position. A negative adjustment closes the mixing valve on a mild day. Leave the sensor empty to use the indoor curve only. The command is still kept at or below the maximum position.",
         "data": {
-          "outdoor_temperature_sensor_entity_id": "Outdoor temperature sensor",
-          "outdoor_adjustment_mapping": "Outdoor adjustment"
+          "outdoor_temperature_sensor_entity_id": "Outdoor temperature sensor"
         },
         "data_description": {
-          "outdoor_temperature_sensor_entity_id": "Outside air temperature. Optional.",
-          "outdoor_adjustment_mapping": "Keys are outdoor °C. Values are percent points added to the indoor position, from -100 to 100. A key applies from that temperature up to the next warmer key."
-        }
-      },
-      "valve_position": {
-        "title": "Valve position mapping",
-        "description": "Keys are target minus current temperature, rounded to 0.1 °C. Values are cover positions from 0 (closed) to 100 (open). A value applies when the difference is greater than its key, up to and including the next key.",
-        "data": {
-          "position_mapping": "Position mapping"
-        },
-        "data_description": {
-          "position_mapping": "Default opening for each indoor temperature difference. Adjust it after the valve has run for a while."
+          "outdoor_temperature_sensor_entity_id": "Outside air temperature. Optional. The outdoor curve is part of the integration and updates with it."
         }
       },
       "thermostat": {
@@ -144,8 +134,6 @@
   },
   "options": {
     "error": {
-      "invalid_position_mapping": "Enter at least one temperature difference, each mapped to a cover position from 0 (closed) to 100 (open).",
-      "invalid_outdoor_adjustment": "Enter at least one outdoor temperature, each mapped to an adjustment from -100 to 100.",
       "invalid_temperature_range": "Minimum temperature must be lower than maximum temperature.",
       "same_temperature_sensor": "The outdoor sensor must be a different entity from the indoor sensor."
     },
@@ -153,7 +141,6 @@
       "init": {
         "menu_options": {
           "cover": "Cover",
-          "valve_position": "Valve position mapping",
           "outdoor": "Outdoor temperature",
           "thermostat": "Temperature",
           "presets": "Presets"
@@ -167,6 +154,8 @@
           "cover_entity_id": "Valve cover",
           "additional_cover_entity_ids": "Additional valve covers",
           "min_cycle_duration": "Minimum cycle duration",
+          "temperature_deadband": "Temperature deadband",
+          "max_position_increase": "Maximum position increase",
           "max_position": "Maximum cover position",
           "emergency_position": "Emergency cover position",
           "min_temp_change_step": "Minimum temperature change",
@@ -178,7 +167,9 @@
           "precision": "Display precision of the current temperature, usually 0.1 or 1.",
           "cover_entity_id": "Cover entity that moves the valve. Position 0 is closed and 100 is open.",
           "additional_cover_entity_ids": "Other covers in the same room. They receive the same position as the main cover.",
-          "min_cycle_duration": "Minimum time between automatic moves. Changes of mode, preset, or target temperature apply immediately. Set to 0 to disable.",
+          "min_cycle_duration": "Minimum time between automatic moves. Changes of mode, preset, or target skip this wait. Opening is still limited to the maximum increase. Set to 0 to disable the wait.",
+          "temperature_deadband": "The room may sit this far below the target without the valve opening further. At or above the target the valve follows the curve closed. 0 disables the band.",
+          "max_position_increase": "Largest opening added in one move while the room is below the deadband. Closing is not limited. 100 lets the valve jump straight to the curve.",
           "emergency_position": "Position used when the indoor sensor is unavailable, unknown, or not numeric. Outdoor trim and the maximum position still apply.",
           "min_temp_change_step": "Ignore room-temperature changes smaller than this since the last move. 0 updates on every change. Mode, preset, and target changes still apply immediately.",
           "position_tolerance": "Do not send a new position when the cover is already within this many percent of the target."
@@ -186,24 +177,12 @@
       },
       "outdoor": {
         "title": "Outdoor temperature",
-        "description": "Outdoor temperature is added to the indoor position. A negative adjustment closes the mixing valve on a mild day. Leave the sensor empty to use the indoor map only. The result is still kept at or below the maximum position.",
+        "description": "Outdoor temperature is added to the indoor position. A negative adjustment closes the mixing valve on a mild day. Leave the sensor empty to use the indoor curve only. The command is still kept at or below the maximum position.",
         "data": {
-          "outdoor_temperature_sensor_entity_id": "Outdoor temperature sensor",
-          "outdoor_adjustment_mapping": "Outdoor adjustment"
+          "outdoor_temperature_sensor_entity_id": "Outdoor temperature sensor"
         },
         "data_description": {
-          "outdoor_temperature_sensor_entity_id": "Outside air temperature. Optional.",
-          "outdoor_adjustment_mapping": "Keys are outdoor °C. Values are percent points added to the indoor position, from -100 to 100. A key applies from that temperature up to the next warmer key."
-        }
-      },
-      "valve_position": {
-        "title": "Valve position mapping",
-        "description": "Keys are target minus current temperature, rounded to 0.1 °C. Values are cover positions from 0 (closed) to 100 (open). A value applies when the difference is greater than its key, up to and including the next key.",
-        "data": {
-          "position_mapping": "Position mapping"
-        },
-        "data_description": {
-          "position_mapping": "Default opening for each indoor temperature difference. Adjust it after the valve has run for a while."
+          "outdoor_temperature_sensor_entity_id": "Outside air temperature. Optional. The outdoor curve is part of the integration and updates with it."
         }
       },
       "thermostat": {

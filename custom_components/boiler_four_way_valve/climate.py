@@ -2,8 +2,10 @@
 
 The valve is a 4-way boiler mixer driven as a cover. 0% keeps the boiler
 and radiator loops separate. 100% joins them into one loop. Indoor temperature
-picks a position, outdoor temperature trims it, and a safety ceiling can stop
-the command from going any higher. A ceiling of 100% disables that limit.
+picks a point on a curve, outdoor temperature trims it, and a safety ceiling
+can stop the command from going any higher. A ceiling of 100% disables that
+limit. Near the target the valve holds its position. It opens a few points at
+a time and closes as soon as the room is warm enough.
 The Manual preset holds a chosen position instead of following the maps.
 """
 
@@ -63,19 +65,21 @@ from .const import (
     CONF_COVER_ENTITY_ID,
     CONF_EMERGENCY_POSITION,
     CONF_MAX_POSITION,
+    CONF_MAX_POSITION_INCREASE,
     CONF_MAX_TEMP,
     CONF_MIN_CYCLE_DURATION,
     CONF_MIN_TEMP,
     CONF_MIN_TEMP_CHANGE_STEP,
-    CONF_OUTDOOR_ADJUSTMENT_MAPPING,
     CONF_OUTDOOR_TEMPERATURE_SENSOR_ENTITY_ID,
-    CONF_POSITION_MAPPING,
     CONF_POSITION_TOLERANCE,
     CONF_PRECISION,
     CONF_PRESETS,
     CONF_TARGET_TEMP_STEP,
+    CONF_TEMPERATURE_DEADBAND,
     CONF_TEMPERATURE_SENSOR_ENTITY_ID,
+    DEFAULT_DEADBAND,
     DEFAULT_EMERGENCY,
+    DEFAULT_INCREASE,
     DEFAULT_MAX,
     DEFAULT_MIN_TEMP_CHANGE_STEP,
     DEFAULT_POSITION_TOLERANCE,
@@ -89,8 +93,10 @@ from .const import (
 from .device import device_info_for_cover
 from .mapping import (
     DEFAULT_OUTDOOR_ADJUSTMENT,
+    DEFAULT_POSITION_MAPPING,
     parse_outdoor_adjustment,
     parse_position_mapping,
+    to_cover_percent,
     valve_positions,
 )
 
@@ -108,18 +114,8 @@ async def async_setup_entry(
     """Set up a cover-driven thermostat from a config entry."""
     registry = er.async_get(hass)
     options = config_entry.options
-
-    try:
-        mapping = parse_position_mapping(options.get(CONF_POSITION_MAPPING) or {})
-        outdoor_mapping = parse_outdoor_adjustment(
-            options.get(CONF_OUTDOOR_ADJUSTMENT_MAPPING) or DEFAULT_OUTDOOR_ADJUSTMENT
-        )
-    except ValueError:
-        _LOGGER.error(
-            "Position mapping for %s is empty or outside its allowed range",
-            config_entry.title,
-        )
-        return
+    mapping = parse_position_mapping(DEFAULT_POSITION_MAPPING)
+    outdoor_mapping = parse_outdoor_adjustment(DEFAULT_OUTDOOR_ADJUSTMENT)
 
     outdoor_sensor = options.get(CONF_OUTDOOR_TEMPERATURE_SENSOR_ENTITY_ID) or None
     if outdoor_sensor:
@@ -167,6 +163,23 @@ async def async_setup_entry(
                 position_tolerance=options.get(
                     CONF_POSITION_TOLERANCE, DEFAULT_POSITION_TOLERANCE
                 ),
+                deadband=max(
+                    0.0,
+                    _config_float(
+                        options.get(CONF_TEMPERATURE_DEADBAND, DEFAULT_DEADBAND),
+                        DEFAULT_DEADBAND,
+                    ),
+                ),
+                max_position_increase=min(
+                    100.0,
+                    max(
+                        0.0,
+                        _config_float(
+                            options.get(CONF_MAX_POSITION_INCREASE, DEFAULT_INCREASE),
+                            DEFAULT_INCREASE,
+                        ),
+                    ),
+                ),
                 unit=hass.config.units.temperature_unit,
                 presets={
                     preset: options[option]
@@ -189,6 +202,19 @@ def _whole_number(value: object) -> float:
     if not math.isfinite(number):
         return float(DEFAULT_MAX)
     return int(number) if number.is_integer() else number
+
+
+def _config_float(value: object, default: float) -> float:
+    """Return a finite config number, or ``default``."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return default
+    try:
+        number = float(value)
+    except ValueError:
+        return default
+    if not math.isfinite(number):
+        return default
+    return number
 
 
 def _duration(value: object) -> timedelta | None:
@@ -234,6 +260,8 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         target_temp_step: float | None,
         min_temp_change_step: float,
         position_tolerance: float,
+        deadband: float,
+        max_position_increase: float,
         unit: UnitOfTemperature,
         presets: dict[str, float],
     ) -> None:
@@ -274,6 +302,8 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self._emergency_position = emergency_position
         self._min_temp_change_step = min_temp_change_step
         self._position_tolerance = position_tolerance
+        self._deadband = deadband
+        self._max_position_increase = max_position_increase
         self._presets = presets
         self._presets_inv = {
             temperature: preset for preset, temperature in presets.items()
@@ -599,7 +629,10 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
                 )
                 self._schedule_deferred(remaining)
                 return
-            if not self._temperature_changed_enough():
+            if (
+                not self._temperature_changed_enough()
+                and not self._still_opening(self._next_command or 0)
+            ):
                 return
 
         position = self._next_command or 0
@@ -609,11 +642,11 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         if self._covers_within_tolerance(position):
             self._cancel_pending()
             self._remember_temperatures()
-            return
-
-        self._last_command_at = time.monotonic()
-        await self._async_set_cover_positions(position)
-        self._remember_temperatures()
+        else:
+            self._last_command_at = time.monotonic()
+            await self._async_set_cover_positions(position)
+            self._remember_temperatures()
+        self._schedule_next_opening()
 
     async def _async_set_cover_positions(self, position: int) -> None:
         """Set each cover that is not already at this position."""
@@ -680,6 +713,29 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
             for entity_id in self._cover_entity_ids
         )
 
+    def _still_opening(self, command: int) -> bool:
+        """Return True when another step is still owed toward the curve."""
+        if self._hvac_mode == HVACMode.OFF or self._manual_active:
+            return False
+        if self._last_difference is None or self._last_difference <= self._deadband:
+            return False
+        calculated = self._calculated_position
+        if calculated is None:
+            return False
+        limit = calculated
+        if self._max_position < 100:
+            limit = min(calculated, int(self._max_position))
+        return limit - command > self._position_tolerance
+
+    def _schedule_next_opening(self) -> None:
+        """Take the next upward step after the cycle, even if the room is unchanged."""
+        if self._min_cycle_duration is None:
+            return
+        command = self._commanded_position
+        if command is None or not self._still_opening(command):
+            return
+        self._schedule_deferred(self._min_cycle_duration.total_seconds())
+
     def _cycle_remaining(self) -> float:
         """Return the seconds left in the minimum cycle, or 0."""
         if self._min_cycle_duration is None or self._last_command_at is None:
@@ -711,6 +767,9 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
             outdoor=self._outdoor_temp,
             outdoor_mapping=self._outdoor_mapping,
             max_position=self._max_position,
+            previous=self._previous_opening(),
+            deadband=self._deadband,
+            max_increase=self._max_position_increase,
         )
         self._next_command = command
         self._calculated_position = calculated
@@ -740,6 +799,15 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         tracked = None if runtime is None else runtime.tracked
         if tracked is not None:
             tracked.publish(self.tracked_snapshot())
+
+    def _previous_opening(self) -> int | None:
+        """Return the last command, or the cover position when none was sent."""
+        if self._commanded_position is not None:
+            return self._commanded_position
+        reported = self._reported_position(self._cover_entity_id)
+        if reported is None:
+            return None
+        return to_cover_percent(reported)
 
     def _remember_temperatures(self) -> None:
         """Store the temperatures that produced the latest command."""
@@ -831,7 +899,12 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
 
     def _schedule_deferred(self, delay: float) -> None:
         """Run one later control pass. A pass that is already waiting is kept."""
-        if self._pending_update and not self._pending_update.done():
+        pending = self._pending_update
+        if (
+            pending
+            and not pending.done()
+            and pending is not asyncio.current_task()
+        ):
             return
         self._pending_update = self.hass.async_create_task(
             self._execute_deferred(delay), eager_start=True

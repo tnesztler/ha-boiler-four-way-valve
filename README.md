@@ -7,7 +7,7 @@ The valve is a [Shelly 2PM Gen4](https://www.shelly.com/) paired over **Zigbee**
 - **0%** does not mix the boiler into the radiator loop. The two loops stay separate, so the radiators are not heated.
 - **100%** joins them into one loop: water leaves the boiler toward the radiators, and the radiator return goes back into the boiler.
 
-The indoor map turns the gap between the target and the room temperature into a cover position from 0% to 100%. Outdoor temperature then adds or removes opening, so a mild day holds the valve further closed and burns less oil. A **maximum position** is a safety ceiling on every command. **100% disables that ceiling.**
+The indoor curve turns the gap between the target and the room temperature into a cover position from 0% to 100%. Outdoor temperature then adds or removes opening, so a mild day holds the valve further closed and burns less oil. Near the target the valve stays put. It opens a few points at a time and closes as soon as the room is warm enough. A **maximum position** is a safety ceiling on the command. **100% disables that ceiling.** The calculated position can still show a higher opening.
 
 ## Shelly 2PM Gen4
 
@@ -21,45 +21,52 @@ The helper reads an indoor sensor and, optionally, an outdoor sensor, then write
 
 ## Valve position mapping
 
-The difference is **target − current**, rounded to 0.1 °C. The position stored on a key is used when the difference is **greater than that key**, up to and including the next key.
+The difference is **target − current**, rounded to 0.1 °C. The position stored on a key is the opening **at that difference**. Between two keys the opening moves in a straight line. Colder than the first key keeps that key's position, and warmer than the last key keeps the last one.
 
-Default mapping:
+The default line stays shallow through the first 0.3 °C, then rises to recover a larger deficit:
 
 ```yaml
 "-0.2": 0
-"-0.1": 8
-"0.0": 14
-"0.1": 19
-"0.2": 28
-"0.4": 44
-"0.7": 50
-"1.0": 56
-"1.3": 67
-"1.7": 83
+"0.0": 8
+"0.3": 12
+"0.7": 28
+"1.2": 50
+"1.7": 75
 "2.0": 100
 ```
 
 | Target − current | Cover position |
 | --- | --- |
-| ≤ -0.1 | 0% closed |
-| > -0.1 to 0.0 | 8% |
-| > 0.0 to 0.1 | 14% |
-| > 0.1 to 0.2 | 19% |
-| > 0.2 to 0.4 | 28% |
-| > 0.4 to 0.7 | 44% |
-| > 0.7 to 1.0 | 50% |
-| > 1.0 to 1.3 | 56% |
-| > 1.3 to 1.7 | 67% |
-| > 1.7 to < 2.0 | 83% |
+| ≤ -0.2 | 0% closed |
+| -0.1 | 4% |
+| 0.0 | 8% |
+| 0.3 | 12% |
+| 0.5 | 20% |
+| 0.7 | 28% |
+| 1.0 | 41% |
+| 1.2 | 50% |
+| 1.7 | 75% |
 | ≥ 2.0 | 100% open |
 
-Example: target 21.0 °C, room 20.7 °C. The difference is 0.3, so the cover is set to **28%**.
+Example: target 21.0 °C, room 20.7 °C. The difference is 0.3, so the curve is **12%** before the outdoor trim. A 0.5 °C deficit is **20%**, on the line between 12% and 28%.
 
-`off` uses the lowest position in the map. With the default map that is **0%**, closed. While the mode stays `off`, a position you set on the cover yourself is left alone. Changing the mode, a preset, or the target temperature moves the cover immediately.
+This curve is part of the integration. It is not a helper option, so installing a new version replaces it.
+
+`off` uses the lowest position in the map. With the default map that is **0%**, closed. While the mode stays `off`, a position you set on the cover yourself is left alone. Changing the mode, a preset, or the target temperature skips the wait between moves. An opening is still limited to the maximum increase. A closing move follows the curve in one step.
+
+## Deadband and slow opening
+
+The curve is the opening the room is asking for. The command is that opening after three oil-saving rules:
+
+- While the room is above the target, or exactly on it, the valve follows the closing side of the curve immediately.
+- While the room is below the target by at most the **temperature deadband** (default **0.3 °C**), the valve stays at its current opening. The first move in that band uses the opening the curve gives at the target, including the outdoor trim.
+- While the room is further below the target, the valve may open by at most the **maximum position increase** (default **5** points) per move. It takes the next step after each minimum cycle while the room stays that cold, without waiting for the temperature to change again. If the curve has fallen below the current opening, the valve closes to it in one move.
+
+A deadband of `0` follows the curve on every change. A maximum increase of `100` lets one move reach the curve. The minimum cycle still spaces automatic moves apart. Mode, preset, and target changes skip that wait, and the same open and close rules apply.
 
 ## Manual override
 
-**Manual position** is a slider from 0% to 100%, capped by the maximum position. In heat mode, set it to **15%** and the valve goes to 15%. The climate preset switches to **Manual**, and indoor and outdoor changes no longer move the valve. `calculated_position` still shows the opening the maps would command, including the outdoor trim and the ceiling.
+**Manual position** is a slider from 0% to 100%, capped by the maximum position. In heat mode, set it to **15%** and the valve goes to 15%. The climate preset switches to **Manual**, and indoor and outdoor changes no longer move the valve. `calculated_position` still shows the opening the curve would ask for, including the outdoor trim. It is not capped by the ceiling, the deadband, or the slow open.
 
 Choosing **Manual** without moving the slider commands whatever position the slider already shows. Choosing another preset, or changing the target temperature, leaves Manual and follows the maps again. `off` still closes the valve; with Manual still selected, heat mode returns to that position.
 
@@ -67,13 +74,13 @@ The slider, the preset, and the HVAC mode are restored after a restart.
 
 The climate action is `heating` while any cover is above that lowest position, and `idle` while it is at the closed position and the mode is `heat`.
 
-Start with the default map. Change it later in the helper options. Every value has to be from 0 to 100.
+The indoor curve and the outdoor curve both ship with the integration. A new version replaces them. Every indoor value is from 0 to 100.
 
-This indoor position is not sent on its own once an outdoor sensor is configured. The outdoor adjustment below is added first, and the maximum position is applied after that.
+This indoor position is not sent on its own once an outdoor sensor is configured. The outdoor adjustment below is added first. The deadband, the slow open, and the maximum position are applied to the command after that.
 
 ## Outdoor adjustment
 
-Keys are outdoor temperatures in °C. The value is **percent points added** to the indoor position. Negative values close the valve. The value of a key applies from that temperature up to, but not including, the next warmer key. Colder than the coldest key keeps that key's adjustment.
+Keys are outdoor temperatures in °C. The value is **percent points added** to the indoor position. Negative values close the valve. Between two keys the adjustment moves in a straight line. Colder than the coldest key keeps that key's adjustment, and warmer than the warmest key keeps the last one.
 
 ```yaml
 "-10": 35
@@ -86,37 +93,39 @@ Keys are outdoor temperatures in °C. The value is **percent points added** to t
 
 | Outdoor | Added to the indoor position |
 | --- | --- |
-| < -10 °C | +35 |
-| -10 °C to < -5 °C | +35 |
-| -5 °C to < 0 °C | +20 |
-| 0 °C to < 5 °C | +10 |
-| 5 °C to < 10 °C | 0 |
-| 10 °C to < 15 °C | -15 |
+| ≤ -10 °C | +35 |
+| -8 °C | +29 |
+| -5 °C | +20 |
+| 0 °C | +10 |
+| 2 °C | +6 |
+| 5 °C | 0 |
+| 10 °C | -15 |
+| 12 °C | -25 |
 | ≥ 15 °C | -40 |
 
-The result is clamped to 0–100% and then to the maximum position.
+The curve plus this adjustment is clamped to 0–100%. That number is `calculated_position`. The command then applies the deadband, the slow open, and the maximum position.
 
-Examples, with the default indoor map and no safety ceiling:
+Examples with the default curve, a 0.3 °C deadband, a maximum increase of 5, and no safety ceiling. "First command" is the move when the valve has not been set yet.
 
-| Indoor | Outdoor | Command |
-| --- | --- | --- |
-| At the target (difference 0.0 → 8%) | 12 °C | 0% |
-| 0.3 °C below the target (28%) | 2 °C | 38% |
-| 2 °C or more below the target (100%) | -8 °C | 100% |
+| Indoor | Outdoor | Calculated | First command |
+| --- | --- | --- | --- |
+| At the target (8%) | 12 °C (-25) | 0% | 0% |
+| 0.3 °C below the target (12%) | 2 °C (+6) | 18% | 14% |
+| 2 °C or more below the target (100%) | -8 °C (+29) | 100% | 42%, then +5 per move |
 
-A mild afternoon with the room already at the target closes the valve, so the boiler is not mixed into the radiators. A cold outdoor temperature opens it further even when the room is briefly at the target, because the house is about to lose heat. If the outdoor sensor is missing, the indoor map is used on its own. `off` does not apply the outdoor adjustment: the valve goes to the lowest indoor position, normally 0%.
+A mild afternoon with the room already at the target closes the valve, so the boiler is not mixed into the radiators. A cold outdoor temperature opens it further even when the room is briefly at the target, because the house is about to lose heat. If the outdoor sensor is missing, the indoor curve is used on its own. `off` does not apply the outdoor adjustment: the valve goes to the lowest indoor position, normally 0%.
 
 ## Maximum position
 
-Every command is held at or below this value, including the emergency position, a large outdoor boost, and a manual position.
+Every command is held at or below this value, including the emergency position, a large outdoor boost, and a manual position. `calculated_position` is left above the ceiling when the curve asks for more, so the gap stays visible.
 
 | Maximum | Effect |
 | --- | --- |
 | `100` | Limit disabled. The valve may be commanded fully open. |
-| `60` | The command is never above 60%, even if the maps ask for more. |
+| `60` | The command is never above 60%, even if the curve asks for more. |
 | `0` | The valve is kept closed. |
 
-With the ceiling at 60%, the third example above (100% + 35) is sent as **60%**, not 100%. That keeps the boiler from being fully coupled to the radiators.
+With the ceiling at 60%, the third example above is calculated as **100%** and the command climbs toward **60%**, five points at a time. That keeps the boiler from being fully coupled to the radiators.
 
 ## Installation
 
@@ -158,13 +167,15 @@ All of these can be changed later in the helper options.
 | Temperature sensor precision | `0.1` | How the current temperature is displayed |
 | Valve cover | | Cover whose position is the mixing valve. 0% no mixing, 100% one loop |
 | Additional valve covers | | More covers. They get the same position |
-| Minimum cycle duration | 2 minutes | Minimum time between automatic moves. Mode, preset, and target changes apply immediately. `0` disables the wait |
-| Maximum cover position | `100` | Safety ceiling. The command never goes above this. `100` disables the limit |
+| Minimum cycle duration | 2 minutes | Minimum time between automatic moves. Mode, preset, and target changes skip the wait. Opening is still limited to the maximum increase. `0` disables the wait |
+| Temperature deadband | `0.3` | Degrees the room may sit below the target without the valve opening further. `0` follows the curve |
+| Maximum position increase | `5` | Largest opening added in one move while the room is below the deadband. Closing is not limited. `100` jumps to the curve |
+| Maximum cover position | `100` | Safety ceiling on the command. `calculated_position` may read higher. `100` disables the limit |
 | Emergency cover position | `14` | Used when the indoor sensor is missing or not numeric. Outdoor trim and the ceiling still apply |
 | Minimum temperature change | `0` | Smallest room-temperature change that triggers another move. `0` reacts to every change |
 | Position tolerance | `1` | Skip a command when the cover is already within this many percent |
 
-Automatic moves also wait while a cover reports `opening` or `closing`, so a new position is not sent halfway through a travel. A failing indoor sensor does not wait out the cycle: the cover goes to the emergency position, adjusted for the outdoor temperature and the ceiling, as soon as it is not already moving. A failing outdoor sensor drops the outdoor adjustment and keeps the indoor map.
+Automatic moves also wait while a cover reports `opening` or `closing`, so a new position is not sent halfway through a travel. A failing indoor sensor does not wait out the cycle: the cover goes to the emergency position, adjusted for the outdoor temperature and the ceiling, as soon as it is not already moving. A failing outdoor sensor drops the outdoor adjustment and keeps the indoor curve.
 
 On a restart, heat mode waits up to 30 seconds for the indoor sensor before the first move, so a Zigbee sensor that is still starting does not push the valve to the emergency position. `off` closes the valve on startup.
 
@@ -172,8 +183,7 @@ On a restart, heat mode waits up to 30 seconds for the indoor sensor before the 
 
 | Option | Default | Description |
 | --- | --- | --- |
-| Outdoor temperature sensor | | Outside air temperature. Leave empty to ignore the weather |
-| Outdoor adjustment | see the table above | Percent points added to the indoor position |
+| Outdoor temperature sensor | | Outside air temperature. Leave empty to ignore the weather. The adjustment curve above is part of the integration |
 
 ### Temperature
 
@@ -189,7 +199,7 @@ On a restart, heat mode waits up to 30 seconds for the indoor sensor before the 
 
 Target temperature, HVAC mode, preset, and manual position are restored after a restart.
 
-The climate entity also reports `current_command` (the position last sent to the valve, or the one ready to send), `calculated_position` (the opening the maps would command), `manual_position`, `temperature_difference`, `outdoor_temperature`, `outdoor_adjustment`, and `max_position`. `cover_position` is the position the main cover is reporting. `valve_position` is the same value as `current_command`.
+The climate entity also reports `current_command` (the position last sent to the valve, or the one ready to send), `calculated_position` (the curve after the outdoor trim, before the deadband, the slow open, and the ceiling), `manual_position`, `temperature_difference`, `outdoor_temperature`, `outdoor_adjustment`, and `max_position`. `cover_position` is the position the main cover is reporting. `valve_position` is the same value as `current_command`.
 
 Five sensors record the same numbers so History and long-term statistics can graph them: **Current command**, **Calculated position**, **Temperature offset** (target minus indoor temperature), **Outdoor offset** (percent points added from the outdoor map), and **Maximum position**. Temperature offset is unknown while the indoor temperature is missing. Outdoor offset is unknown while the outdoor temperature is missing.
 
