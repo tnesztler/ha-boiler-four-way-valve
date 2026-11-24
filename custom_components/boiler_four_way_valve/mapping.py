@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -56,9 +57,52 @@ DEFAULT_OUTDOOR_ADJUSTMENT: dict[str, int] = {
 # 100 means the safety ceiling is off. The cover can be commanded to fully open.
 DEFAULT_MAX_POSITION = 100
 
+# A dead sensor keeps its last reading for this long before the emergency path.
+SENSOR_HOLD_SECONDS = 10 * 60
+
 
 class InvalidPositionMapping(ValueError):
     """Position mapping is missing or outside the 0–100 cover range."""
+
+
+def reading_is_fresh(
+    age_seconds: float | None, *, limit: float = SENSOR_HOLD_SECONDS
+) -> bool:
+    """Return True when a stored sensor reading is still under ``limit`` seconds old."""
+    if age_seconds is None or not math.isfinite(age_seconds):
+        return False
+    return age_seconds < limit
+
+
+def fresh_stored_reading(
+    temperature: Any,
+    stamp: Any,
+    now: datetime,
+    *,
+    limit: float = SENSOR_HOLD_SECONDS,
+) -> tuple[float, datetime] | None:
+    """Return a persisted reading and the time it was taken when it is still fresh.
+
+    A stamp in the future is treated as ``now``. A clock step between a restart
+    must not stretch the 10-minute hold.
+    """
+    if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):
+        return None
+    value = float(temperature)
+    if not math.isfinite(value) or not isinstance(stamp, str):
+        return None
+    try:
+        seen = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    if seen.tzinfo is None or now.tzinfo is None:
+        return None
+    age = (now - seen).total_seconds()
+    if not reading_is_fresh(age, limit=limit):
+        return None
+    if age < 0:
+        return value, now
+    return value, seen
 
 
 def parse_position_mapping(raw: Mapping[Any, Any]) -> dict[float, float]:

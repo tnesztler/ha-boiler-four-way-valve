@@ -12,7 +12,7 @@ The Manual preset holds a chosen position instead of following the maps.
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 import math
 import time
@@ -34,6 +34,7 @@ from homeassistant.components.cover import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    ATTR_CURRENT_TEMPERATURE,
     ATTR_ENTITY_ID,
     ATTR_SUPPORTED_FEATURES,
     ATTR_TEMPERATURE,
@@ -56,11 +57,14 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_CALCULATED_POSITION,
     ATTR_CURRENT_COMMAND,
+    ATTR_INDOOR_TEMPERATURE_AT,
     ATTR_MANUAL_POSITION,
+    ATTR_OUTDOOR_TEMPERATURE_AT,
     CONF_ADDITIONAL_COVER_ENTITY_IDS,
     CONF_COVER_ENTITY_ID,
     CONF_EMERGENCY_POSITION,
@@ -94,9 +98,12 @@ from .device import device_info_for_cover
 from .mapping import (
     DEFAULT_OUTDOOR_ADJUSTMENT,
     DEFAULT_POSITION_MAPPING,
+    SENSOR_HOLD_SECONDS,
     another_step_owed,
+    fresh_stored_reading,
     parse_outdoor_adjustment,
     parse_position_mapping,
+    reading_is_fresh,
     to_cover_percent,
     valve_positions,
 )
@@ -314,6 +321,12 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self._saved_target_temp: float | None = None
         self._current_temp: float | None = None
         self._outdoor_temp: float | None = None
+        self._indoor_seen_at: float | None = None
+        self._outdoor_seen_at: float | None = None
+        self._indoor_seen_wall: datetime | None = None
+        self._outdoor_seen_wall: datetime | None = None
+        self._indoor_held = False
+        self._outdoor_held = False
         self._last_outdoor_adjustment: float | None = None
         self._last_outdoor_at_update: float | None = None
         self._hvac_mode: HVACMode | None = None
@@ -326,7 +339,11 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self._last_command_at: float | None = None
         self._pending_update: asyncio.Task[None] | None = None
         self._logged_cover_unavailable = False
+        self._logged_indoor_unavailable = False
+        self._logged_indoor_held = False
         self._logged_outdoor_unavailable = False
+        self._logged_outdoor_held = False
+        self._hold_expiry: asyncio.Task[None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Restore state, then subscribe to the sensor and the covers."""
@@ -350,7 +367,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
 
         await self._async_restore()
         self._publish_manual_position()
-        self._read_current_temperature()
+        self._read_current_temperature(announce=False)
         self._read_outdoor_temperature()
 
         if self.hass.state is CoreState.running:
@@ -367,6 +384,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Cancel a cover move that is waiting out the cycle time."""
         self._cancel_pending()
+        self._cancel_hold_expiry()
         await super().async_will_remove_from_hass()
 
     @callback
@@ -376,7 +394,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
 
     async def _async_startup(self) -> None:
         """Move the cover to the restored setpoint once temperatures exist."""
-        self._read_current_temperature()
+        self._read_current_temperature(announce=False)
         self._read_outdoor_temperature()
         if self._hvac_mode == HVACMode.OFF or self._manual_active:
             await self._async_control_heating(force=True)
@@ -421,6 +439,22 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
             ):
                 self._manual_position = float(raw_position)
 
+            updated = (
+                last_state.last_updated.isoformat()
+                if last_state.last_updated is not None
+                else None
+            )
+            self._restore_sensor_reading(
+                last_state.attributes.get(ATTR_CURRENT_TEMPERATURE),
+                last_state.attributes.get(ATTR_INDOOR_TEMPERATURE_AT) or updated,
+                indoor=True,
+            )
+            self._restore_sensor_reading(
+                last_state.attributes.get("outdoor_temperature"),
+                last_state.attributes.get(ATTR_OUTDOOR_TEMPERATURE_AT) or updated,
+                indoor=False,
+            )
+
         if self._target_temp is None:
             self._target_temp = self.min_temp
             self._saved_target_temp = self._target_temp
@@ -433,12 +467,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         if event.data["entity_id"] == self._outdoor_sensor_entity_id:
             self._apply_outdoor_state(new_state)
         elif new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            _LOGGER.warning(
-                "Indoor temperature sensor %s is %s; using the emergency position",
-                self._temp_sensor_entity_id,
-                new_state.state if new_state else "removed",
-            )
-            self._current_temp = None
+            self._note_indoor_failure(new_state)
         else:
             self._read_temperature_state(new_state)
 
@@ -536,10 +565,30 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         await self._async_control_heating(force=True)
         self.async_write_ha_state()
 
+    def _restore_sensor_reading(
+        self, temperature: Any, stamp: Any, *, indoor: bool
+    ) -> None:
+        """Keep a reading from the previous run when it is under 10 minutes old."""
+        now = dt_util.utcnow()
+        stored = fresh_stored_reading(temperature, stamp, now)
+        if stored is None:
+            return
+        value, seen = stored
+        age = max(0.0, (now - seen).total_seconds())
+        seen_at = time.monotonic() - age
+        if indoor:
+            self._current_temp = value
+            self._indoor_seen_at = seen_at
+            self._indoor_seen_wall = seen
+            return
+        self._outdoor_temp = value
+        self._outdoor_seen_at = seen_at
+        self._outdoor_seen_wall = seen
+
     @property
-    def extra_state_attributes(self) -> dict[str, int | float]:
+    def extra_state_attributes(self) -> dict[str, int | float | str]:
         """Return the command, the map opening, and the temperature difference."""
-        attributes: dict[str, int | float] = {}
+        attributes: dict[str, int | float | str] = {}
         command = self._commanded_position
         if command is None:
             command = self._next_command
@@ -553,8 +602,14 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
             attributes["cover_position"] = reported
         if self._last_difference is not None:
             attributes["temperature_difference"] = self._last_difference
+        if self._current_temp is not None and self._indoor_seen_wall is not None:
+            attributes[ATTR_INDOOR_TEMPERATURE_AT] = self._indoor_seen_wall.isoformat()
         if self._outdoor_temp is not None:
             attributes["outdoor_temperature"] = self._outdoor_temp
+        if self._outdoor_temp is not None and self._outdoor_seen_wall is not None:
+            attributes[ATTR_OUTDOOR_TEMPERATURE_AT] = (
+                self._outdoor_seen_wall.isoformat()
+            )
         if self._last_outdoor_adjustment is not None:
             attributes["outdoor_adjustment"] = self._last_outdoor_adjustment
         attributes[ATTR_MANUAL_POSITION] = self._manual_position
@@ -834,11 +889,11 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
             return None
         return float(raw)
 
-    def _read_current_temperature(self) -> None:
+    def _read_current_temperature(self, *, announce: bool = True) -> None:
         """Read the indoor temperature sensor's current state."""
         state = self.hass.states.get(self._temp_sensor_entity_id)
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            self._current_temp = None
+            self._note_indoor_failure(state, announce=announce)
             return
         self._read_temperature_state(state)
 
@@ -846,21 +901,16 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         """Read the outdoor sensor, if one is configured."""
         if not self._outdoor_sensor_entity_id:
             self._outdoor_temp = None
+            self._outdoor_seen_at = None
+            self._outdoor_seen_wall = None
+            self._outdoor_held = False
             return
         self._apply_outdoor_state(self.hass.states.get(self._outdoor_sensor_entity_id))
 
     def _apply_outdoor_state(self, state: State | None) -> None:
-        """Store the outdoor temperature, or forget it when the sensor is down."""
+        """Store the outdoor temperature, or keep a recent reading when it is down."""
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            if not self._logged_outdoor_unavailable:
-                _LOGGER.warning(
-                    "Outdoor temperature sensor %s is %s; "
-                    "the valve follows the indoor map only",
-                    self._outdoor_sensor_entity_id,
-                    state.state if state else "missing",
-                )
-                self._logged_outdoor_unavailable = True
-            self._outdoor_temp = None
+            self._note_outdoor_failure(state)
             return
 
         try:
@@ -868,34 +918,151 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         except (TypeError, ValueError):
             temperature = math.nan
         if not math.isfinite(temperature):
-            if not self._logged_outdoor_unavailable:
-                _LOGGER.warning(
-                    "Outdoor temperature sensor %s has a non-numeric state: %s",
-                    self._outdoor_sensor_entity_id,
-                    state.state,
-                )
-                self._logged_outdoor_unavailable = True
-            self._outdoor_temp = None
+            self._note_outdoor_failure(state)
             return
 
-        self._logged_outdoor_unavailable = False
         self._outdoor_temp = temperature
+        self._outdoor_seen_at = time.monotonic()
+        self._outdoor_seen_wall = dt_util.utcnow()
+        self._outdoor_held = False
+        self._logged_outdoor_unavailable = False
+        self._logged_outdoor_held = False
+        self._arm_hold_expiry()
 
     def _read_temperature_state(self, state: State) -> None:
-        """Store a numeric sensor state."""
+        """Store a numeric indoor sensor state."""
         try:
             temperature = float(state.state)
         except (TypeError, ValueError):
             temperature = math.nan
         if not math.isfinite(temperature):
-            _LOGGER.warning(
-                "Temperature sensor %s has a non-numeric state: %s",
-                self._temp_sensor_entity_id,
-                state.state,
-            )
-            self._current_temp = None
+            self._note_indoor_failure(state)
             return
         self._current_temp = temperature
+        self._indoor_seen_at = time.monotonic()
+        self._indoor_seen_wall = dt_util.utcnow()
+        self._indoor_held = False
+        self._logged_indoor_unavailable = False
+        self._logged_indoor_held = False
+        self._arm_hold_expiry()
+
+    def _note_indoor_failure(self, state: State | None, *, announce: bool = True) -> None:
+        """Keep a recent indoor reading, or fall back to the emergency position."""
+        if self._remember_reading(
+            seen_at=self._indoor_seen_at,
+            held_flag="_indoor_held",
+            logged_flag="_logged_indoor_held",
+            entity_id=self._temp_sensor_entity_id,
+            state=state,
+        ):
+            return
+        if announce and not self._logged_indoor_unavailable:
+            _LOGGER.warning(
+                "Indoor temperature sensor %s is %s; using the emergency position",
+                self._temp_sensor_entity_id,
+                state.state if state else "missing",
+            )
+            self._logged_indoor_unavailable = True
+        self._current_temp = None
+        self._indoor_seen_at = None
+        self._indoor_seen_wall = None
+        self._indoor_held = False
+        self._arm_hold_expiry()
+
+    def _note_outdoor_failure(self, state: State | None) -> None:
+        """Keep a recent outdoor reading, or drop the outdoor adjustment."""
+        if self._remember_reading(
+            seen_at=self._outdoor_seen_at,
+            held_flag="_outdoor_held",
+            logged_flag="_logged_outdoor_held",
+            entity_id=self._outdoor_sensor_entity_id,
+            state=state,
+        ):
+            return
+        if not self._logged_outdoor_unavailable:
+            _LOGGER.warning(
+                "Outdoor temperature sensor %s is %s; "
+                "the valve follows the indoor curve only",
+                self._outdoor_sensor_entity_id,
+                state.state if state else "missing",
+            )
+            self._logged_outdoor_unavailable = True
+        self._outdoor_temp = None
+        self._outdoor_seen_at = None
+        self._outdoor_seen_wall = None
+        self._outdoor_held = False
+        self._arm_hold_expiry()
+
+    def _remember_reading(
+        self,
+        *,
+        seen_at: float | None,
+        held_flag: str,
+        logged_flag: str,
+        entity_id: str | None,
+        state: State | None,
+    ) -> bool:
+        """Return True when the last reading is still under 10 minutes old."""
+        age = None if seen_at is None else time.monotonic() - seen_at
+        if not reading_is_fresh(age):
+            return False
+        setattr(self, held_flag, True)
+        if not getattr(self, logged_flag):
+            _LOGGER.warning(
+                "Temperature sensor %s is %s; keeping its last reading for up to 10 minutes",
+                entity_id,
+                state.state if state else "missing",
+            )
+            setattr(self, logged_flag, True)
+        self._arm_hold_expiry()
+        return True
+
+    def _arm_hold_expiry(self) -> None:
+        """Wake once the oldest held reading reaches 10 minutes."""
+        self._cancel_hold_expiry()
+        delay = self._soonest_hold_expiry()
+        if delay is None:
+            return
+        self._hold_expiry = self.hass.async_create_task(
+            self._expire_hold(delay), eager_start=True
+        )
+
+    def _soonest_hold_expiry(self) -> float | None:
+        """Return the seconds until a held reading must be dropped."""
+        now = time.monotonic()
+        remaining: list[float] = []
+        for held, seen_at in (
+            (self._indoor_held, self._indoor_seen_at),
+            (self._outdoor_held, self._outdoor_seen_at),
+        ):
+            if not held or seen_at is None:
+                continue
+            age = now - seen_at
+            if reading_is_fresh(age):
+                remaining.append(SENSOR_HOLD_SECONDS - age)
+        if not remaining:
+            return None
+        return max(0.0, min(remaining))
+
+    def _cancel_hold_expiry(self) -> None:
+        """Cancel a wait for a held sensor reading to expire."""
+        task = self._hold_expiry
+        if task and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+
+    async def _expire_hold(self, delay: float) -> None:
+        """Drop a sensor reading that is now 10 minutes old, then control."""
+        try:
+            await asyncio.sleep(delay)
+            self._read_current_temperature()
+            self._read_outdoor_temperature()
+            await self._async_control_heating()
+            self.async_write_ha_state()
+        except asyncio.CancelledError:
+            raise
+        finally:
+            if self._hold_expiry is asyncio.current_task():
+                self._hold_expiry = None
 
     def _schedule_deferred(self, delay: float) -> None:
         """Run one later control pass. A pass that is already waiting is kept."""

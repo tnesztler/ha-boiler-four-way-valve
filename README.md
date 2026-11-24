@@ -141,13 +141,15 @@ Or add it manually: **Settings** → **Marketplace** → **Add from link**, and 
 
 `https://github.com/tnesztler/ha-boiler-four-way-valve`
 
-Open **Boiler Four-Way Valve** and select **Install**. Restart Home Assistant if a repair asks you to.
+Open **Boiler Four-Way Valve** and select **Install**. Restart Home Assistant.
 
 ### HACS
 
 1. In HACS, open **Custom repositories** and add `https://github.com/tnesztler/ha-boiler-four-way-valve` as an **Integration**.
 2. Install **Boiler Four-Way Valve**.
 3. Restart Home Assistant.
+
+A new version is loaded only when Home Assistant restarts. Reloading the helper applies its options and does not load the updated code. Rebooting the machine is unnecessary.
 
 ### Create the helper
 
@@ -173,13 +175,13 @@ All of these can be changed later in the helper options.
 | Temperature deadband | `0.3` | Degrees the room may sit below the target without the valve opening further. `0` follows the curve |
 | Maximum position increase | `5` | Largest opening added in one move while the room is below the deadband. Closing is not limited. `100` jumps to the curve |
 | Maximum cover position | `100` | Safety ceiling on the command. `calculated_position` may read higher. `100` disables the limit |
-| Emergency cover position | `14` | Used when the indoor sensor is missing or not numeric. Outdoor trim and the ceiling still apply |
+| Emergency cover position | `14` | Used when the indoor sensor has no numeric reading from the last 10 minutes. Outdoor trim and the ceiling still apply |
 | Minimum temperature change | `0` | Smallest room-temperature change that triggers another move. `0` reacts to every change |
 | Position tolerance | `1` | Skip a command when the cover is already within this many percent |
 
-Automatic moves also wait while a cover reports `opening` or `closing`, so a new position is not sent halfway through a travel. A failing indoor sensor does not wait out the cycle: the cover goes to the emergency position, adjusted for the outdoor temperature and the ceiling, as soon as it is not already moving. A failing outdoor sensor drops the outdoor adjustment and keeps the indoor curve.
+Automatic moves also wait while a cover reports `opening` or `closing`, so a new position is not sent halfway through a travel. A failing indoor sensor keeps its last reading for 10 minutes, including across a Home Assistant restart. After that it does not wait out the cycle: the cover goes to the emergency position, adjusted for the outdoor temperature and the ceiling, as soon as it is not already moving. A failing outdoor sensor keeps its last reading for 10 minutes, including across a restart, then drops the outdoor adjustment and keeps the indoor curve.
 
-On a restart, heat mode waits up to 30 seconds for the indoor sensor before the first move, so a Zigbee sensor that is still starting does not push the valve to the emergency position. `off` closes the valve on startup.
+On a restart, a reading from the last 10 minutes is used immediately, so the valve resumes while a Zigbee sensor is still starting. If that reading is older, heat mode waits up to 30 seconds for the indoor sensor before the first move. `off` closes the valve on startup.
 
 ### Outdoor
 
@@ -201,7 +203,7 @@ On a restart, heat mode waits up to 30 seconds for the indoor sensor before the 
 
 Target temperature, HVAC mode, preset, and manual position are restored after a restart.
 
-The climate entity also reports `current_command` (the position last sent to the valve, or the one ready to send), `calculated_position` (the curve after the outdoor trim, before the deadband, the slow open, and the ceiling), `manual_position`, `temperature_difference`, `outdoor_temperature`, `outdoor_adjustment`, and `max_position`. `cover_position` is the position the main cover is reporting. `valve_position` is the same value as `current_command`.
+The climate entity also reports `current_command` (the position last sent to the valve, or the one ready to send), `calculated_position` (the curve after the outdoor trim, before the deadband, the slow open, and the ceiling), `manual_position`, `temperature_difference`, `outdoor_temperature`, `outdoor_adjustment`, and `max_position`. `outdoor_temperature` stays on the entity for checks and is not drawn on the thermostat panel. `cover_position` is the position the main cover is reporting. `valve_position` is the same value as `current_command`.
 
 Five sensors record the same numbers so History and long-term statistics can graph them: **Current command**, **Calculated position**, **Temperature offset** (target minus indoor temperature), **Outdoor offset** (percent points added from the outdoor map), and **Maximum position**. Temperature offset is unknown while the indoor temperature is missing. Outdoor offset is unknown while the outdoor temperature is missing.
 

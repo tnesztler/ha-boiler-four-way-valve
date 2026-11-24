@@ -3,7 +3,6 @@ const PLATFORM = "boiler_four_way_valve";
 const HEROES = ["current_command", "calculated_position"];
 const DETAILS = [
   "temperature_difference",
-  "outdoor_temperature",
   "outdoor_adjustment",
   "manual_position",
   "max_position",
@@ -14,12 +13,11 @@ const PERCENT = new Set([
   "manual_position",
   "max_position",
 ]);
-const TEMPERATURE = new Set(["temperature_difference", "outdoor_temperature"]);
+const TEMPERATURE = new Set(["temperature_difference"]);
 const FALLBACK = {
   current_command: "Current command",
   calculated_position: "Calculated position",
   temperature_difference: "Temperature difference",
-  outdoor_temperature: "Outdoor temperature",
   outdoor_adjustment: "Outdoor adjustment",
   manual_position: "Manual position",
   max_position: "Maximum position",

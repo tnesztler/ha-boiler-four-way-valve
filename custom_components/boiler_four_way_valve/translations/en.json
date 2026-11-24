@@ -92,7 +92,7 @@
           "min_cycle_duration": "Minimum time between automatic moves. Changes of mode, preset, or target skip this wait. Opening is still limited to the maximum increase. Set to 0 to disable the wait.",
           "temperature_deadband": "The room may sit this far below the target without the valve opening further. At or above the target the valve follows the curve closed. 0 disables the band.",
           "max_position_increase": "Largest opening added in one move while the room is below the deadband. Closing is not limited. 100 lets the valve jump straight to the curve.",
-          "emergency_position": "Position used when the indoor sensor is unavailable, unknown, or not numeric. Outdoor trim and the maximum position still apply.",
+          "emergency_position": "Position used when the indoor sensor has no numeric reading from the last 10 minutes. Outdoor trim and the maximum position still apply.",
           "min_temp_change_step": "Ignore room-temperature changes smaller than this since the last move. 0 updates on every change. Mode, preset, and target changes still apply immediately.",
           "position_tolerance": "Do not send a new position when the cover is already within this many percent of the target."
         }
@@ -170,7 +170,7 @@
           "min_cycle_duration": "Minimum time between automatic moves. Changes of mode, preset, or target skip this wait. Opening is still limited to the maximum increase. Set to 0 to disable the wait.",
           "temperature_deadband": "The room may sit this far below the target without the valve opening further. At or above the target the valve follows the curve closed. 0 disables the band.",
           "max_position_increase": "Largest opening added in one move while the room is below the deadband. Closing is not limited. 100 lets the valve jump straight to the curve.",
-          "emergency_position": "Position used when the indoor sensor is unavailable, unknown, or not numeric. Outdoor trim and the maximum position still apply.",
+          "emergency_position": "Position used when the indoor sensor has no numeric reading from the last 10 minutes. Outdoor trim and the maximum position still apply.",
           "min_temp_change_step": "Ignore room-temperature changes smaller than this since the last move. 0 updates on every change. Mode, preset, and target changes still apply immediately.",
           "position_tolerance": "Do not send a new position when the cover is already within this many percent of the target."
         }

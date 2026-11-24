@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(
@@ -139,6 +140,34 @@ class MappingTests(unittest.TestCase):
             mapping.parse_position_mapping({"0.0": True})
         with self.assertRaises(mapping.InvalidPositionMapping):
             mapping.parse_position_mapping({"cold": 10})
+
+    def test_a_sensor_reading_is_fresh_for_ten_minutes(self) -> None:
+        self.assertFalse(mapping.reading_is_fresh(None))
+        self.assertTrue(mapping.reading_is_fresh(0))
+        self.assertTrue(mapping.reading_is_fresh(mapping.SENSOR_HOLD_SECONDS - 0.1))
+        self.assertFalse(mapping.reading_is_fresh(mapping.SENSOR_HOLD_SECONDS))
+        self.assertFalse(mapping.reading_is_fresh(float("nan")))
+
+    def test_a_stored_reading_survives_when_it_is_under_ten_minutes(self) -> None:
+        now = datetime(2026, 11, 24, 18, 0, tzinfo=timezone.utc)
+        recent = (now - timedelta(minutes=9)).isoformat()
+        expired = (now - timedelta(minutes=10)).isoformat()
+        future = (now + timedelta(minutes=1)).isoformat()
+
+        kept = mapping.fresh_stored_reading(19.4, recent, now)
+        self.assertIsNotNone(kept)
+        assert kept is not None
+        self.assertEqual(kept[0], 19.4)
+        self.assertEqual(kept[1], now - timedelta(minutes=9))
+
+        self.assertIsNone(mapping.fresh_stored_reading(19.4, expired, now))
+        self.assertIsNone(mapping.fresh_stored_reading(19.4, "not-a-time", now))
+        self.assertIsNone(mapping.fresh_stored_reading(True, recent, now))
+
+        ahead = mapping.fresh_stored_reading(18.0, future, now)
+        self.assertIsNotNone(ahead)
+        assert ahead is not None
+        self.assertEqual(ahead, (18.0, now))
 
     def test_half_up_rounding(self) -> None:
         self.assertEqual(mapping.to_cover_percent(14.5), 15)
