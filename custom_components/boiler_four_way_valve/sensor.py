@@ -126,7 +126,7 @@ async def async_setup_entry(
         + [
             IntegrationVersionSensor(
                 entry_id=config_entry.entry_id,
-                version=integration.version or "0",
+                version=str(integration.version or "0"),
                 device_info=device_info,
             )
         ]
