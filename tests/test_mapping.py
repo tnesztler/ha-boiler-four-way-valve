@@ -330,6 +330,106 @@ class ControlDecisionTests(unittest.TestCase):
         self.assertEqual(calculated, 100)
         self.assertEqual(command, 42)
 
+    def test_a_cold_room_creeps_open_and_then_stops(self) -> None:
+        previous = None
+        commands = []
+        for _ in range(8):
+            command, calculated, difference, _ = self._positions(
+                current=20.5,
+                target=21.0,
+                previous=previous,
+            )
+            commands.append(command)
+            self.assertLessEqual(command, calculated)
+            owed = mapping.another_step_owed(
+                command=command,
+                calculated=calculated,
+                difference=difference,
+                deadband=mapping.DEFAULT_TEMPERATURE_DEADBAND,
+                max_position=100,
+                tolerance=1,
+            )
+            if not owed:
+                break
+            self.assertEqual(command, (14 if previous is None else previous) + 5)
+            previous = command
+        self.assertEqual(commands, [19, 24, 26])
+        self.assertFalse(
+            mapping.another_step_owed(
+                command=26,
+                calculated=26,
+                difference=0.5,
+                deadband=0.3,
+                max_position=100,
+                tolerance=1,
+            )
+        )
+
+    def test_the_ceiling_ends_the_climb(self) -> None:
+        self.assertFalse(
+            mapping.another_step_owed(
+                command=30,
+                calculated=100,
+                difference=2.0,
+                deadband=0.3,
+                max_position=30,
+                tolerance=1,
+            )
+        )
+        self.assertTrue(
+            mapping.another_step_owed(
+                command=25,
+                calculated=100,
+                difference=2.0,
+                deadband=0.3,
+                max_position=30,
+                tolerance=1,
+            )
+        )
+
+    def test_deadband_and_manual_do_not_keep_opening(self) -> None:
+        self.assertFalse(
+            mapping.another_step_owed(
+                command=22,
+                calculated=40,
+                difference=0.2,
+                deadband=0.3,
+                max_position=100,
+                tolerance=1,
+            )
+        )
+        self.assertFalse(
+            mapping.another_step_owed(
+                command=15,
+                calculated=40,
+                difference=1.0,
+                deadband=0.3,
+                max_position=100,
+                tolerance=1,
+                manual=True,
+            )
+        )
+
+    def test_no_deadband_still_opens_slowly(self) -> None:
+        command, calculated, _, _ = self._positions(
+            current=20.8,
+            target=21.0,
+            previous=10,
+            deadband=0,
+        )
+        self.assertEqual(calculated, 17)
+        self.assertEqual(command, 15)
+
+    def test_a_full_increase_reaches_the_curve_in_one_move(self) -> None:
+        command, calculated, _, _ = self._positions(
+            current=20.5,
+            target=21.0,
+            previous=10,
+            max_increase=100,
+        )
+        self.assertEqual(calculated, 26)
+        self.assertEqual(command, 26)
+
     def test_cold_room_opens_by_one_step(self) -> None:
         command, calculated, difference, _ = self._positions(
             current=20.5,

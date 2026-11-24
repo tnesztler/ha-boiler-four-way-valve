@@ -198,6 +198,35 @@ def apply_outdoor_and_limit(
     return limit_position(raw, max_position), adjustment
 
 
+def another_step_owed(
+    *,
+    command: int,
+    calculated: int | None,
+    difference: float | None,
+    deadband: float,
+    max_position: float,
+    tolerance: float,
+    manual: bool = False,
+    hvac_off: bool = False,
+) -> bool:
+    """Return True when a later cycle should open the valve further.
+
+    Opening continues only while the room is below the deadband and the
+    command is still short of the curve, or of the safety ceiling when that
+    is lower. A held, manual, or stopped valve does not keep stepping.
+    """
+    if hvac_off or manual:
+        return False
+    if difference is None or difference <= deadband:
+        return False
+    if calculated is None:
+        return False
+    limit = calculated
+    if max_position < OPEN_POSITION:
+        limit = min(calculated, int(max_position))
+    return limit - command > tolerance
+
+
 def economy_command(
     desired: int,
     *,

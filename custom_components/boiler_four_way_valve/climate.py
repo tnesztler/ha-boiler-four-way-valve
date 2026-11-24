@@ -94,6 +94,7 @@ from .device import device_info_for_cover
 from .mapping import (
     DEFAULT_OUTDOOR_ADJUSTMENT,
     DEFAULT_POSITION_MAPPING,
+    another_step_owed,
     parse_outdoor_adjustment,
     parse_position_mapping,
     to_cover_percent,
@@ -715,17 +716,16 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
 
     def _still_opening(self, command: int) -> bool:
         """Return True when another step is still owed toward the curve."""
-        if self._hvac_mode == HVACMode.OFF or self._manual_active:
-            return False
-        if self._last_difference is None or self._last_difference <= self._deadband:
-            return False
-        calculated = self._calculated_position
-        if calculated is None:
-            return False
-        limit = calculated
-        if self._max_position < 100:
-            limit = min(calculated, int(self._max_position))
-        return limit - command > self._position_tolerance
+        return another_step_owed(
+            command=command,
+            calculated=self._calculated_position,
+            difference=self._last_difference,
+            deadband=self._deadband,
+            max_position=self._max_position,
+            tolerance=self._position_tolerance,
+            manual=self._manual_active,
+            hvac_off=self._hvac_mode == HVACMode.OFF,
+        )
 
     def _schedule_next_opening(self) -> None:
         """Take the next upward step after the cycle, even if the room is unchanged."""

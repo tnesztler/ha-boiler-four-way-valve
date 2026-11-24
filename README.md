@@ -2,6 +2,8 @@
 
 A Home Assistant helper that sets a **4-way boiler mixing valve** from the indoor temperature and the outdoor temperature.
 
+The driving constraint is to keep heating oil consumption as low as possible while tracking the desired room temperature as closely as possible. A small deadband around the target is acceptable. Heat above the target is wasted oil: the house loses it faster, and the valve has to open again to recover.
+
 The valve is a [Shelly 2PM Gen4](https://www.shelly.com/) paired over **Zigbee** and set to **Cover** mode. Every move is `cover.set_cover_position`. The integration does not call open, close, or stop.
 
 - **0%** does not mix the boiler into the radiator loop. The two loops stay separate, so the radiators are not heated.
