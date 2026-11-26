@@ -23,14 +23,14 @@ import mapping  # noqa: E402
 CURVE = (
     (-1.0, 0),
     (-0.2, 0),
-    (-0.1, 4),
-    (0.0, 8),
-    (0.3, 12),
-    (0.5, 20),
-    (0.7, 28),
-    (1.0, 41.2),
-    (1.2, 50),
-    (1.7, 75),
+    (-0.1, 16),
+    (0.0, 32),
+    (0.3, 40),
+    (0.5, 46),
+    (0.7, 52),
+    (1.0, 61.6),
+    (1.2, 68),
+    (1.7, 84),
     (2.0, 100),
     (3.0, 100),
 )
@@ -43,7 +43,7 @@ class MappingTests(unittest.TestCase):
     def test_default_spans_closed_to_open(self) -> None:
         self.assertEqual(mapping.DEFAULT_POSITION_MAPPING["-0.2"], 0)
         self.assertEqual(mapping.DEFAULT_POSITION_MAPPING["2.0"], 100)
-        self.assertEqual(mapping.DEFAULT_EMERGENCY_POSITION, 14)
+        self.assertEqual(mapping.DEFAULT_EMERGENCY_POSITION, 32)
 
     def test_curve_matches_the_published_line(self) -> None:
         for difference, expected in CURVE:
@@ -54,7 +54,7 @@ class MappingTests(unittest.TestCase):
                 )
 
     def test_small_indoor_gap_opens_the_valve_partway(self) -> None:
-        # Target 21.0 °C, current 20.7 °C. Difference 0.3 is the 12% point.
+        # Target 21.0 °C, current 20.7 °C. Difference 0.3 is the 40% point.
         position, difference = mapping.cover_position(
             self.mapping,
             current=20.7,
@@ -63,7 +63,7 @@ class MappingTests(unittest.TestCase):
             hvac_off=False,
         )
         self.assertEqual(difference, 0.3)
-        self.assertEqual(position, 12)
+        self.assertEqual(position, 40)
 
     def test_zero_celsius_is_a_real_temperature(self) -> None:
         position, difference = mapping.cover_position(
@@ -74,7 +74,7 @@ class MappingTests(unittest.TestCase):
             hvac_off=False,
         )
         self.assertEqual(difference, 0.0)
-        self.assertEqual(position, 8)
+        self.assertEqual(position, 32)
 
     def test_off_uses_the_lowest_position(self) -> None:
         position, difference = mapping.cover_position(
@@ -201,7 +201,7 @@ class OutdoorAndLimitTests(unittest.TestCase):
                     expected,
                 )
 
-    def test_mild_weather_closes_a_satisfied_room(self) -> None:
+    def test_mild_weather_almost_closes_a_satisfied_room(self) -> None:
         indoor, _ = mapping.cover_position(
             self.indoor,
             current=20.0,
@@ -215,9 +215,9 @@ class OutdoorAndLimitTests(unittest.TestCase):
             outdoor_mapping=self.outdoor,
             max_position=100,
         )
-        self.assertEqual(indoor, 8)
+        self.assertEqual(indoor, 32)
         self.assertAlmostEqual(adjustment, -25)
-        self.assertEqual(position, 0)
+        self.assertEqual(position, 7)
 
     def test_cool_weather_adds_to_a_small_indoor_demand(self) -> None:
         indoor, difference = mapping.cover_position(
@@ -234,9 +234,9 @@ class OutdoorAndLimitTests(unittest.TestCase):
             max_position=100,
         )
         self.assertEqual(difference, 0.3)
-        self.assertEqual(indoor, 12)
+        self.assertEqual(indoor, 40)
         self.assertAlmostEqual(adjustment, 6)
-        self.assertEqual(position, 18)
+        self.assertEqual(position, 46)
 
     def test_maximum_of_100_disables_the_ceiling(self) -> None:
         for ceiling in (100, 100.0, None):
@@ -330,12 +330,12 @@ class ControlDecisionTests(unittest.TestCase):
         command, calculated, difference, adjustment = self._positions()
         self.assertEqual(difference, 0.3)
         self.assertAlmostEqual(adjustment, 6)
-        self.assertEqual(calculated, 18)
-        self.assertEqual(command, 14)
+        self.assertEqual(calculated, 46)
+        self.assertEqual(command, 38)
 
     def test_deadband_keeps_an_existing_opening(self) -> None:
         command, calculated, _, _ = self._positions(previous=22, current=20.8, target=21.0)
-        self.assertEqual(calculated, 17)
+        self.assertEqual(calculated, 43)
         self.assertEqual(command, 22)
 
     def test_warm_room_closes_to_the_curve_in_one_move(self) -> None:
@@ -345,8 +345,8 @@ class ControlDecisionTests(unittest.TestCase):
             previous=40,
         )
         self.assertEqual(difference, -0.1)
-        self.assertEqual(calculated, 10)
-        self.assertEqual(command, 10)
+        self.assertEqual(calculated, 22)
+        self.assertEqual(command, 22)
 
     def test_large_deficit_starts_from_the_holding_opening(self) -> None:
         command, calculated, difference, adjustment = self._positions(
@@ -357,7 +357,7 @@ class ControlDecisionTests(unittest.TestCase):
         self.assertEqual(difference, 2.0)
         self.assertAlmostEqual(adjustment, 29)
         self.assertEqual(calculated, 100)
-        self.assertEqual(command, 42)
+        self.assertEqual(command, 66)
 
     def test_a_cold_room_creeps_open_and_then_stops(self) -> None:
         previous = None
@@ -380,13 +380,13 @@ class ControlDecisionTests(unittest.TestCase):
             )
             if not owed:
                 break
-            self.assertEqual(command, (14 if previous is None else previous) + 5)
+            self.assertEqual(command, (38 if previous is None else previous) + 5)
             previous = command
-        self.assertEqual(commands, [19, 24, 26])
+        self.assertEqual(commands, [43, 48, 52])
         self.assertFalse(
             mapping.another_step_owed(
-                command=26,
-                calculated=26,
+                command=52,
+                calculated=52,
                 difference=0.5,
                 deadband=0.3,
                 max_position=100,
@@ -446,7 +446,7 @@ class ControlDecisionTests(unittest.TestCase):
             previous=10,
             deadband=0,
         )
-        self.assertEqual(calculated, 17)
+        self.assertEqual(calculated, 43)
         self.assertEqual(command, 15)
 
     def test_a_full_increase_reaches_the_curve_in_one_move(self) -> None:
@@ -456,8 +456,8 @@ class ControlDecisionTests(unittest.TestCase):
             previous=10,
             max_increase=100,
         )
-        self.assertEqual(calculated, 26)
-        self.assertEqual(command, 26)
+        self.assertEqual(calculated, 52)
+        self.assertEqual(command, 52)
 
     def test_cold_room_opens_by_one_step(self) -> None:
         command, calculated, difference, _ = self._positions(
@@ -466,17 +466,17 @@ class ControlDecisionTests(unittest.TestCase):
             previous=10,
         )
         self.assertEqual(difference, 0.5)
-        self.assertEqual(calculated, 26)
+        self.assertEqual(calculated, 52)
         self.assertEqual(command, 15)
 
     def test_cold_room_closes_fully_when_the_curve_falls(self) -> None:
         command, calculated, _, _ = self._positions(
             current=20.5,
             target=21.0,
-            previous=40,
+            previous=70,
         )
-        self.assertEqual(calculated, 26)
-        self.assertEqual(command, 26)
+        self.assertEqual(calculated, 52)
+        self.assertEqual(command, 52)
 
     def test_calculated_position_stays_above_the_ceiling(self) -> None:
         command, calculated, _, adjustment = self._positions(
@@ -493,7 +493,7 @@ class ControlDecisionTests(unittest.TestCase):
     def test_calculated_position_stays_visible_during_manual_hold(self) -> None:
         command, calculated, difference, adjustment = self._positions(manual=True)
         self.assertEqual(command, 15)
-        self.assertEqual(calculated, 18)
+        self.assertEqual(calculated, 46)
         self.assertEqual(difference, 0.3)
         self.assertAlmostEqual(adjustment, 6)
 
@@ -505,7 +505,7 @@ class ControlDecisionTests(unittest.TestCase):
             target=20.0,
             outdoor=12,
         )
-        self.assertEqual(calculated, 0)
+        self.assertEqual(calculated, 7)
         self.assertAlmostEqual(adjustment, -25)
         self.assertEqual(command, 15)
 
@@ -525,14 +525,14 @@ class ControlDecisionTests(unittest.TestCase):
     def test_off_closes_the_valve_and_still_reports_the_calculation(self) -> None:
         command, calculated, difference, adjustment = self._positions(hvac_off=True)
         self.assertEqual(command, 0)
-        self.assertEqual(calculated, 18)
+        self.assertEqual(calculated, 46)
         self.assertEqual(difference, 0.3)
         self.assertAlmostEqual(adjustment, 6)
 
     def test_off_and_manual_still_closes_the_valve(self) -> None:
         command, calculated, _, _ = self._positions(hvac_off=True, manual=True)
         self.assertEqual(command, 0)
-        self.assertEqual(calculated, 18)
+        self.assertEqual(calculated, 46)
 
     def test_missing_indoor_temperature_uses_emergency_in_the_calculation(self) -> None:
         command, calculated, difference, adjustment = self._positions(

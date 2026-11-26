@@ -23,19 +23,21 @@ from typing import Any
 CLOSED_POSITION = 0
 OPEN_POSITION = 100
 
-# Opening at each target − current difference. Shallow through the deadband,
-# then a recovery slope. Between these keys the opening is a straight line.
+# Opening at each target − current difference. At the target the valve is
+# already far enough open to put hot water through high-temperature steel
+# radiators. A small deficit opens further. 0.2 °C above the target is
+# closed. Between these keys the opening is a straight line.
 DEFAULT_POSITION_MAPPING: dict[str, int] = {
     "-0.2": 0,
-    "0.0": 8,
-    "0.3": 12,
-    "0.7": 28,
-    "1.2": 50,
-    "1.7": 75,
+    "0.0": 32,
+    "0.3": 40,
+    "0.7": 52,
+    "1.2": 68,
+    "1.7": 84,
     "2.0": 100,
 }
 
-DEFAULT_EMERGENCY_POSITION = 14
+DEFAULT_EMERGENCY_POSITION = 32
 
 # Room may sit this far below the target without the valve opening further.
 DEFAULT_TEMPERATURE_DEADBAND = 0.3

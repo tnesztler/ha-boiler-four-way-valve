@@ -25,32 +25,32 @@ The helper reads an indoor sensor and, optionally, an outdoor sensor, then write
 
 The difference is **target − current**, rounded to 0.1 °C. The position stored on a key is the opening **at that difference**. Between two keys the opening moves in a straight line. Colder than the first key keeps that key's position, and warmer than the last key keeps the last one.
 
-The default line stays shallow through the first 0.3 °C, then rises to recover a larger deficit:
+The default line is closed once the room is 0.2 °C above the target. At the target it is already open far enough for high-temperature steel radiators. A four-way valve at a few percent only trickles boiler water into the radiator loop, and a lukewarm loop does not heat emitters that were sized for about 80/60 °C or 90/70 °C. Their output falls sharply as the water cools, roughly with the temperature difference between the water and the room. A deficit opens the valve further from that holding point.
 
 ```yaml
 "-0.2": 0
-"0.0": 8
-"0.3": 12
-"0.7": 28
-"1.2": 50
-"1.7": 75
+"0.0": 32
+"0.3": 40
+"0.7": 52
+"1.2": 68
+"1.7": 84
 "2.0": 100
 ```
 
 | Target − current | Cover position |
 | --- | --- |
 | ≤ -0.2 | 0% closed |
-| -0.1 | 4% |
-| 0.0 | 8% |
-| 0.3 | 12% |
-| 0.5 | 20% |
-| 0.7 | 28% |
-| 1.0 | 41% |
-| 1.2 | 50% |
-| 1.7 | 75% |
+| -0.1 | 16% |
+| 0.0 | 32% |
+| 0.3 | 40% |
+| 0.5 | 46% |
+| 0.7 | 52% |
+| 1.0 | 62% |
+| 1.2 | 68% |
+| 1.7 | 84% |
 | ≥ 2.0 | 100% open |
 
-Example: target 21.0 °C, room 20.7 °C. The difference is 0.3, so the curve is **12%** before the outdoor trim. A 0.5 °C deficit is **20%**, on the line between 12% and 28%.
+Example: target 21.0 °C, room 20.7 °C. The difference is 0.3, so the curve is **40%** before the outdoor trim. A 0.5 °C deficit is **46%**, on the line between 40% and 52%. The 1.0 °C point on that next line is **62%** after rounding.
 
 This curve is part of the integration. It is not a helper option, so installing a new version replaces it.
 
@@ -111,11 +111,11 @@ Examples with the default curve, a 0.3 °C deadband, a maximum increase of 5, an
 
 | Indoor | Outdoor | Calculated | First command |
 | --- | --- | --- | --- |
-| At the target (8%) | 12 °C (-25) | 0% | 0% |
-| 0.3 °C below the target (12%) | 2 °C (+6) | 18% | 14% |
-| 2 °C or more below the target (100%) | -8 °C (+29) | 100% | 42%, then +5 per move |
+| At the target (32%) | 12 °C (-25) | 7% | 7% |
+| 0.3 °C below the target (40%) | 2 °C (+6) | 46% | 38% |
+| 2 °C or more below the target (100%) | -8 °C (+29) | 100% | 66%, then +5 per move |
 
-A mild afternoon with the room already at the target closes the valve, so the boiler is not mixed into the radiators. A cold outdoor temperature opens it further even when the room is briefly at the target, because the house is about to lose heat. If the outdoor sensor is missing, the indoor curve is used on its own. `off` does not apply the outdoor adjustment: the valve goes to the lowest indoor position, normally 0%.
+A mild afternoon trims the opening. At 12 °C with the room on the target the command is 7%, and at 15 °C the outdoor trim closes the valve. A cold outdoor temperature opens it further even when the room is briefly at the target, because the house is about to lose heat. If the outdoor sensor is missing, the indoor curve is used on its own. `off` does not apply the outdoor adjustment: the valve goes to the lowest indoor position, normally 0%.
 
 ## Maximum position
 
@@ -175,7 +175,7 @@ All of these can be changed later in the helper options.
 | Temperature deadband | `0.3` | Degrees the room may sit below the target without the valve opening further. `0` follows the curve |
 | Maximum position increase | `5` | Largest opening added in one move while the room is below the deadband. Closing is not limited. `100` jumps to the curve |
 | Maximum cover position | `100` | Safety ceiling on the command. `calculated_position` may read higher. `100` disables the limit |
-| Emergency cover position | `14` | Used when the indoor sensor has no numeric reading from the last 10 minutes. Outdoor trim and the ceiling still apply |
+| Emergency cover position | `32` | Used when the indoor sensor has no numeric reading from the last 10 minutes. Outdoor trim and the ceiling still apply |
 | Minimum temperature change | `0` | Smallest room-temperature change that triggers another move. `0` reacts to every change |
 | Position tolerance | `1` | Skip a command when the cover is already within this many percent |
 
@@ -209,7 +209,7 @@ Five sensors record the same numbers so History and long-term statistics can gra
 
 **Integration version** reports the installed version of this helper. The state stays the same until the integration is updated, so temperature history can be compared across releases.
 
-Those values are drawn above the built-in thermostat. A Thermostat card for this climate entity shows the panel over the dial, and opening the entity shows the same panel at the top of the dialog. Restart Home Assistant after installing or updating, then refresh the browser. If the dial is cramped, make the card taller.
+Those values are drawn above the built-in thermostat. A Thermostat card for this climate entity shows the panel over the dial, and opening the entity shows the same panel at the top of the dialog. Changing the target from the thermostat asks for confirmation before the new setpoint is sent. Restart Home Assistant after installing or updating, then refresh the browser. If the dial is cramped, make the card taller.
 
 ## Credits
 

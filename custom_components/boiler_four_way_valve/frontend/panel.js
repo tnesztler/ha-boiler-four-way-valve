@@ -1,4 +1,5 @@
 // Shows the valve command above the built-in thermostat card and more-info dialog.
+// A target-temperature edit asks for confirmation before it is sent.
 const PLATFORM = "boiler_four_way_valve";
 const HEROES = ["current_command", "calculated_position"];
 const DETAILS = [
@@ -284,3 +285,261 @@ function patch(tag, sync) {
 
 patch("more-info-climate", syncMoreInfo);
 patch("hui-thermostat-card", syncThermostatCard);
+
+const CONFIRM_STYLE = `
+  .boiler-valve-confirm {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .boiler-valve-confirm .box {
+    width: min(100%, 360px);
+    box-sizing: border-box;
+    margin: 0;
+    padding: 20px 20px 16px;
+    border-radius: var(--ha-card-border-radius, 12px);
+    background: var(--card-background-color, var(--ha-card-background, var(--primary-background-color)));
+    color: var(--primary-text-color);
+    box-shadow: var(--ha-card-box-shadow, 0 8px 24px rgba(0, 0, 0, 0.24));
+  }
+  .boiler-valve-confirm h2 {
+    margin: 0 0 8px;
+    font-size: var(--ha-font-size-l, 18px);
+    font-weight: var(--ha-font-weight-medium, 500);
+    line-height: var(--ha-line-height-condensed, 1.2);
+  }
+  .boiler-valve-confirm p {
+    margin: 0 0 20px;
+    font-size: var(--ha-font-size-m, 14px);
+    line-height: var(--ha-line-height-normal, 1.4);
+  }
+  .boiler-valve-confirm .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .boiler-valve-confirm button {
+    margin: 0;
+    padding: 8px 16px;
+    border-radius: var(--ha-border-radius-md, 8px);
+    font: inherit;
+    font-size: var(--ha-font-size-m, 14px);
+    cursor: pointer;
+  }
+  .boiler-valve-confirm .cancel {
+    background: transparent;
+    color: var(--primary-text-color);
+    border: 1px solid var(--divider-color);
+  }
+  .boiler-valve-confirm .change {
+    background: var(--primary-color);
+    color: var(--text-primary-color, #fff);
+    border: 1px solid transparent;
+  }
+`;
+
+let confirmQueue = Promise.resolve();
+
+function listedEntities(data, target) {
+  const raw = (data && data.entity_id) || (target && target.entity_id);
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw : [raw];
+}
+
+function isOurClimate(hass, entityId) {
+  if (isValveClimate(hass, entityId)) return true;
+  const state = hass && hass.states && hass.states[entityId];
+  const attributes = state && state.attributes;
+  return Boolean(
+    attributes &&
+      "current_command" in attributes &&
+      "calculated_position" in attributes &&
+      "temperature_difference" in attributes,
+  );
+}
+
+function setpointChange(hass, domain, service, data, target) {
+  if (domain !== "climate" || service !== "set_temperature" || !data) return null;
+  const next = Number(data.temperature);
+  if (!Number.isFinite(next)) return null;
+  const entityId = listedEntities(data, target).find((id) => isOurClimate(hass, id));
+  if (!entityId) return null;
+  const state = hass.states && hass.states[entityId];
+  const current = state && state.attributes ? Number(state.attributes.temperature) : NaN;
+  if (Number.isFinite(current) && Math.abs(current - next) < 0.05) return null;
+  return { entityId, current, next };
+}
+
+function temperatureUnit(hass) {
+  const unit =
+    hass && hass.config && hass.config.unit_system && hass.config.unit_system.temperature;
+  return unit || "°C";
+}
+
+function formatTemperature(value, unit) {
+  if (!Number.isFinite(value)) return "—";
+  return `${value.toFixed(1)} ${unit}`;
+}
+
+function localized(hass, key, fallback) {
+  if (!hass || !hass.localize) return fallback;
+  const value = hass.localize(key);
+  if (!value || value === key) return fallback;
+  return value;
+}
+
+function ensureConfirmStyle() {
+  if (document.getElementById("boiler-valve-confirm-style")) return;
+  const style = document.createElement("style");
+  style.id = "boiler-valve-confirm-style";
+  style.textContent = CONFIRM_STYLE;
+  document.head.append(style);
+}
+
+function askConfirm(hass, entityId, current, next) {
+  ensureConfirmStyle();
+  const state = hass.states && hass.states[entityId];
+  const name = state && state.attributes && state.attributes.friendly_name;
+  const unit = temperatureUnit(hass);
+  const from = formatTemperature(current, unit);
+  const to = formatTemperature(next, unit);
+  const detail = name
+    ? `Change the ${name} target from ${from} to ${to}?`
+    : `Change the target from ${from} to ${to}?`;
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "boiler-valve-confirm";
+    const box = document.createElement("div");
+    box.className = "box";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-labelledby", "boiler-valve-confirm-title");
+    const title = document.createElement("h2");
+    title.id = "boiler-valve-confirm-title";
+    title.textContent = "Change target temperature";
+    const text = document.createElement("p");
+    text.textContent = detail;
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "cancel";
+    cancel.textContent = localized(hass, "ui.common.cancel", "Cancel");
+    const change = document.createElement("button");
+    change.type = "button";
+    change.className = "change";
+    change.textContent = "Change";
+    actions.append(cancel, change);
+    box.append(title, text, actions);
+    overlay.append(box);
+
+    const previous = document.activeElement;
+    function finish(ok) {
+      document.removeEventListener("keydown", onKey, true);
+      overlay.remove();
+      if (previous && previous.focus) previous.focus();
+      resolve(ok);
+    }
+    function onKey(event) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      finish(false);
+    }
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish(false);
+    });
+    cancel.addEventListener("click", () => finish(false));
+    change.addEventListener("click", () => finish(true));
+    document.addEventListener("keydown", onKey, true);
+    document.body.append(overlay);
+    cancel.focus();
+  });
+}
+
+function enqueueConfirm(hass, entityId, current, next) {
+  const job = confirmQueue.then(
+    () => askConfirm(hass, entityId, current, next),
+    () => askConfirm(hass, entityId, current, next),
+  );
+  confirmQueue = job.then(
+    () => undefined,
+    () => undefined,
+  );
+  return job;
+}
+
+function adoptGuard(guarded) {
+  const root = document.querySelector("home-assistant");
+  if (!root) return;
+  const visitChildren = (node) => {
+    const kids = node.children;
+    if (!kids) return;
+    for (let index = 0; index < kids.length; index += 1) visit(kids[index]);
+  };
+  const visit = (node) => {
+    if (!node) return;
+    if (node.nodeType === 1 && node._api && typeof node._api.callService === "function") {
+      node._api.callService = guarded;
+    }
+    if (node.shadowRoot) visitChildren(node.shadowRoot);
+    visitChildren(node);
+  };
+  visit(root);
+}
+
+function installGuard(hass) {
+  if (!hass || typeof hass.callService !== "function") return;
+  if (hass.callService.__boilerValveGuard) return;
+  const original = hass.callService.bind(hass);
+  function guarded(domain, service, data, target) {
+    const extra = [];
+    for (let index = 4; index < arguments.length; index += 1) {
+      extra.push(arguments[index]);
+    }
+    const change = setpointChange(hass, domain, service, data, target);
+    const send = () => original(domain, service, data, target, ...extra);
+    if (!change) return send();
+    return enqueueConfirm(hass, change.entityId, change.current, change.next).then((ok) => {
+      if (!ok) {
+        const error = new Error("Target change cancelled");
+        error.code = "boiler_four_way_valve_cancelled";
+        return Promise.reject(error);
+      }
+      return send();
+    });
+  }
+  guarded.__boilerValveGuard = true;
+  hass.callService = guarded;
+  adoptGuard(guarded);
+}
+
+function watchServiceCalls() {
+  customElements.whenDefined("home-assistant").then(() => {
+    const proto = customElements.get("home-assistant").prototype;
+    if (!proto.__boilerValveHassPatched) {
+      proto.__boilerValveHassPatched = true;
+      const original = proto.updated;
+      proto.updated = function updated(changed) {
+        try {
+          installGuard(this.hass);
+        } catch {
+          // A confirm-dialog failure must leave the thermostat control usable.
+        }
+        if (original) original.call(this, changed);
+      };
+    }
+    const root = document.querySelector("home-assistant");
+    if (root && root.hass) installGuard(root.hass);
+  });
+}
+
+watchServiceCalls();
