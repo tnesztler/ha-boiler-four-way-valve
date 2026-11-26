@@ -209,7 +209,7 @@ Five sensors record the same numbers so History and long-term statistics can gra
 
 **Integration version** reports the installed version of this helper. The state stays the same until the integration is updated, so temperature history can be compared across releases.
 
-Those values are drawn above the built-in thermostat. A Thermostat card for this climate entity shows the panel over the dial, and opening the entity shows the same panel at the top of the dialog. Changing the target from the thermostat asks for confirmation before the new setpoint is sent. Restart Home Assistant after installing or updating, then refresh the browser. If the dial is cramped, make the card taller.
+Those values are drawn above the built-in thermostat. A Thermostat card for this climate entity shows the panel over the dial, and opening the entity shows the same panel at the top of the dialog. The History button opens the cover's device, so the recorded command and the other valve sensors are on the graph with the climate entity. Changing the target from the thermostat asks for confirmation before the new setpoint is sent. Restart Home Assistant after installing or updating, then refresh the browser. If the dial is cramped, make the card taller.
 
 ## Credits
 

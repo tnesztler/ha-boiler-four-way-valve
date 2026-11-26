@@ -1,5 +1,6 @@
 // Shows the valve command above the built-in thermostat card and more-info dialog.
 // A target-temperature edit asks for confirmation before it is sent.
+// History opens the cover device, so the recorded command is on the graph.
 const PLATFORM = "boiler_four_way_valve";
 const HEROES = ["current_command", "calculated_position"];
 const DETAILS = [
@@ -285,6 +286,77 @@ function patch(tag, sync) {
 
 patch("more-info-climate", syncMoreInfo);
 patch("hui-thermostat-card", syncThermostatCard);
+
+function deviceIdFor(hass, entityId) {
+  if (!isOurClimate(hass, entityId)) return undefined;
+  const entry = hass && hass.entities && hass.entities[entityId];
+  return entry && entry.device_id ? entry.device_id : undefined;
+}
+
+function deviceHistoryPath(deviceId) {
+  const start = new Date();
+  start.setDate(start.getDate() - 1);
+  start.setHours(0, 0, 0, 0);
+  const params = new URLSearchParams();
+  params.set("device_id", deviceId);
+  params.set("start_date", start.toISOString());
+  params.set("back", "1");
+  return `/history?${params.toString()}`;
+}
+
+function openDeviceHistory(deviceId) {
+  const anchor = document.createElement("a");
+  anchor.href = deviceHistoryPath(deviceId);
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+function patchHistoryButton() {
+  customElements.whenDefined("ha-more-info-dialog").then(() => {
+    const proto = customElements.get("ha-more-info-dialog").prototype;
+    if (proto.__boilerValveHistoryPatched) return;
+    proto.__boilerValveHistoryPatched = true;
+    const original = proto._goToHistory;
+    proto._goToHistory = function goToHistory() {
+      try {
+        const deviceId = deviceIdFor(this.hass, this._entityId);
+        if (deviceId) {
+          openDeviceHistory(deviceId);
+          return;
+        }
+      } catch {
+        // Fall through to the entity history view.
+      }
+      if (original) original.call(this);
+    };
+  });
+}
+
+function patchHistoryLink() {
+  customElements.whenDefined("ha-more-info-history").then(() => {
+    const proto = customElements.get("ha-more-info-history").prototype;
+    if (proto.__boilerValveHistoryLinkPatched) return;
+    proto.__boilerValveHistoryLinkPatched = true;
+    const original = proto.willUpdate;
+    proto.willUpdate = function willUpdate(changed) {
+      if (original) original.call(this, changed);
+      try {
+        const deviceId = deviceIdFor(this.hass, this.entityId);
+        if (!deviceId || !this._showMoreHref) return;
+        const url = new URL(this._showMoreHref, window.location.origin);
+        url.searchParams.delete("entity_id");
+        url.searchParams.set("device_id", deviceId);
+        this._showMoreHref = `${url.pathname}?${url.searchParams.toString()}`;
+      } catch {
+        // Leave the entity link in place.
+      }
+    };
+  });
+}
+
+patchHistoryButton();
+patchHistoryLink();
 
 const CONFIRM_STYLE = `
   .boiler-valve-confirm {
