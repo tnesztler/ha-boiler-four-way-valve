@@ -78,6 +78,93 @@ class _Errors(logging.Handler):
             self.lines.append(f"{record.name}: {record.getMessage()}")
 
 
+async def _late_indoor_sensor(hass: core.HomeAssistant, features: CoverEntityFeature) -> list[str]:
+    """A slow indoor sensor must not move the valve to the emergency position.
+
+    Heat mode keeps the current opening until the sensor reports. The emergency
+    position is only for a sensor that stays missing. Once the room temperature
+    arrives, the command follows the curve.
+    """
+    cover = "cover.valve_late"
+    indoor = "sensor.room_late"
+    outdoor = "sensor.outdoor_late"
+    hass.states.async_set(
+        cover,
+        "open",
+        {"current_position": 40, "supported_features": features},
+    )
+    hass.states.async_set(indoor, STATE_UNKNOWN)
+    hass.states.async_set(outdoor, "5.0", {"unit_of_measurement": "°C"})
+
+    entry = config_entries.ConfigEntry(
+        version=1,
+        minor_version=1,
+        domain=DOMAIN,
+        title="Chaudière late",
+        data={},
+        options={
+            "cover_entity_id": cover,
+            "temperature_sensor_entity_id": indoor,
+            "outdoor_temperature_sensor_entity_id": outdoor,
+            "emergency_position": 14,
+            "min_cycle_duration": {"seconds": 0},
+        },
+        source="user",
+        unique_id="late-sensor",
+        discovery_keys=MappingProxyType({}),
+        subentries_data=None,
+    )
+    await hass.config_entries.async_add(entry)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    climate_id = registry.async_get_entity_id("climate", DOMAIN, entry.entry_id)
+    if climate_id is None:
+        return ["late sensor check is missing its climate entity"]
+
+    await hass.services.async_call(
+        "climate",
+        "set_hvac_mode",
+        {ATTR_ENTITY_ID: climate_id, "hvac_mode": "heat"},
+        blocking=True,
+    )
+    await hass.services.async_call(
+        "climate",
+        "set_temperature",
+        {ATTR_ENTITY_ID: climate_id, "temperature": 19.5},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    # Longer than the old 30 second startup grace. The valve must still be
+    # where heat mode found it, not at the saved emergency position.
+    await asyncio.sleep(35)
+    await hass.async_block_till_done()
+
+    problems: list[str] = []
+    parked = hass.states.get(cover)
+    parked_position = None if parked is None else parked.attributes.get("current_position")
+    if parked_position == 14:
+        problems.append(
+            "late indoor sensor moved the valve to the emergency position "
+            f"({parked_position})"
+        )
+
+    hass.states.async_set(indoor, "19.0", {"unit_of_measurement": "°C"})
+    await hass.async_block_till_done()
+    moved = hass.states.get(cover)
+    position = None if moved is None else moved.attributes.get("current_position")
+    # 19.5 − 19.0 is a 0.5 °C deficit: the curve is 46%, and the valve may
+    # open by only 5 points from the closed startup move.
+    if position != 5:
+        problems.append(
+            f"late indoor sensor commanded {position}, expected the curve step 5"
+        )
+    else:
+        print(f"{cover} {position}")
+    return problems
+
+
 async def main(component: Path) -> list[str]:
     """Set up the helper and return anything that did not come up."""
     manifest = json.loads((component / "manifest.json").read_text(encoding="utf-8"))
@@ -167,6 +254,7 @@ async def main(component: Path) -> list[str]:
                 problems.append(
                     f"{entity_id} is {state.state}, manifest is {manifest['version']}"
                 )
+        problems.extend(await _late_indoor_sensor(hass, features))
         return problems
     finally:
         await hass.async_stop(force=True)

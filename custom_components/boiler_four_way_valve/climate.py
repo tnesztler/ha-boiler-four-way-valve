@@ -325,6 +325,7 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self._current_temp: float | None = None
         self._outdoor_temp: float | None = None
         self._indoor_seen_at: float | None = None
+        self._indoor_missing_since: float | None = None
         self._outdoor_seen_at: float | None = None
         self._indoor_seen_wall: datetime | None = None
         self._outdoor_seen_wall: datetime | None = None
@@ -396,21 +397,15 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self.hass.async_create_task(self._async_startup(), eager_start=True)
 
     async def _async_startup(self) -> None:
-        """Move the cover to the restored setpoint once temperatures exist."""
+        """Move the cover once temperatures exist.
+
+        A missing indoor sensor does not use the emergency position yet.
+        Heat mode keeps the current opening and checks again until the
+        sensor has been missing for the full hold.
+        """
         self._read_current_temperature(announce=False)
         self._read_outdoor_temperature()
-        if self._hvac_mode == HVACMode.OFF or self._manual_active:
-            await self._async_control_heating(force=True)
-        elif self._current_temp is None:
-            _LOGGER.debug(
-                "Temperature sensor %s is not ready; waiting %s s before moving %s",
-                self._temp_sensor_entity_id,
-                STARTUP_SENSOR_GRACE_SECONDS,
-                self._cover_entity_id,
-            )
-            self._schedule_deferred(STARTUP_SENSOR_GRACE_SECONDS)
-        else:
-            await self._async_control_heating(force=True)
+        await self._async_control_heating(force=True)
         self.async_write_ha_state()
 
     async def _async_restore(self) -> None:
@@ -665,12 +660,17 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
                     self._cover_entity_id,
                 )
                 self._logged_cover_unavailable = True
+            self._schedule_deferred(_RETRY_WHILE_MOVING)
             return
         self._logged_cover_unavailable = False
         if force:
             self._cancel_pending()
 
         self._store_calculated_position()
+
+        if self._waiting_for_indoor_sensor():
+            self._schedule_deferred(self._missing_sensor_delay())
+            return
 
         sensor_failed = self._current_temp is None
         if not force and (self._hvac_mode == HVACMode.OFF or self._manual_active):
@@ -944,13 +944,40 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         self._current_temp = temperature
         self._indoor_seen_at = time.monotonic()
         self._indoor_seen_wall = dt_util.utcnow()
+        self._indoor_missing_since = None
         self._indoor_held = False
         self._logged_indoor_unavailable = False
         self._logged_indoor_held = False
         self._arm_hold_expiry()
 
+    def _waiting_for_indoor_sensor(self) -> bool:
+        """Return True while heat mode should keep the valve put.
+
+        The emergency position is for a sensor that has been missing for the
+        whole hold. A restart often has no reading yet because Zigbee is
+        still starting, and that must not move the valve.
+        """
+        if self._current_temp is not None or self._manual_active:
+            return False
+        if self._hvac_mode == HVACMode.OFF:
+            return False
+        since = self._indoor_missing_since
+        if since is None:
+            return True
+        return time.monotonic() - since < SENSOR_HOLD_SECONDS
+
+    def _missing_sensor_delay(self) -> float:
+        """Return how long to wait before checking the indoor sensor again."""
+        since = self._indoor_missing_since
+        if since is None:
+            return float(STARTUP_SENSOR_GRACE_SECONDS)
+        remaining = SENSOR_HOLD_SECONDS - (time.monotonic() - since)
+        return max(1.0, min(float(STARTUP_SENSOR_GRACE_SECONDS), remaining))
+
     def _note_indoor_failure(self, state: State | None, *, announce: bool = True) -> None:
-        """Keep a recent indoor reading, or fall back to the emergency position."""
+        """Keep a recent indoor reading, or record that the sensor is missing."""
+        if self._indoor_missing_since is None:
+            self._indoor_missing_since = time.monotonic()
         if self._remember_reading(
             seen_at=self._indoor_seen_at,
             held_flag="_indoor_held",
@@ -960,11 +987,20 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         ):
             return
         if announce and not self._logged_indoor_unavailable:
-            _LOGGER.warning(
-                "Indoor temperature sensor %s is %s; using the emergency position",
-                self._temp_sensor_entity_id,
-                state.state if state else "missing",
-            )
+            waiting = time.monotonic() - (self._indoor_missing_since or time.monotonic())
+            if waiting < SENSOR_HOLD_SECONDS:
+                _LOGGER.warning(
+                    "Indoor temperature sensor %s is %s; "
+                    "keeping the valve in place until it has been missing for 10 minutes",
+                    self._temp_sensor_entity_id,
+                    state.state if state else "missing",
+                )
+            else:
+                _LOGGER.warning(
+                    "Indoor temperature sensor %s is %s; using the emergency position",
+                    self._temp_sensor_entity_id,
+                    state.state if state else "missing",
+                )
             self._logged_indoor_unavailable = True
         self._current_temp = None
         self._indoor_seen_at = None
@@ -1090,6 +1126,8 @@ class BoilerFourWayValveClimate(ClimateEntity, RestoreEntity):
         """Wait, then apply the position that is current at that time."""
         try:
             await asyncio.sleep(delay)
+            self._read_current_temperature(announce=False)
+            self._read_outdoor_temperature()
             await self._async_control_heating()
             self.async_write_ha_state()
         except asyncio.CancelledError:

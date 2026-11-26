@@ -181,7 +181,7 @@ All of these can be changed later in the helper options.
 
 Automatic moves also wait while a cover reports `opening` or `closing`, so a new position is not sent halfway through a travel. A failing indoor sensor keeps its last reading for 10 minutes, including across a Home Assistant restart. After that it does not wait out the cycle: the cover goes to the emergency position, adjusted for the outdoor temperature and the ceiling, as soon as it is not already moving. A failing outdoor sensor keeps its last reading for 10 minutes, including across a restart, then drops the outdoor adjustment and keeps the indoor curve.
 
-On a restart, a reading from the last 10 minutes is used immediately, so the valve resumes while a Zigbee sensor is still starting. If that reading is older, heat mode waits up to 30 seconds for the indoor sensor before the first move. `off` closes the valve on startup.
+On a restart, a reading from the last 10 minutes is used immediately, so the valve resumes while a Zigbee sensor is still starting. If that reading is older, heat mode leaves the valve where it is and keeps checking. The emergency position is sent only after the indoor sensor has been missing for 10 minutes. `off` closes the valve on startup.
 
 ### Outdoor
 
