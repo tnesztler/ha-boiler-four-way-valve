@@ -60,7 +60,7 @@ This curve is part of the integration. It is not a helper option, so installing 
 
 The curve is the opening the room is asking for. The command is that opening after three oil-saving rules:
 
-- While the room is above the target, or exactly on it, the valve follows the closing side of the curve immediately.
+- While the room is above the target, or exactly on it, the valve follows the closing side of the curve immediately. Once that curve is closed, the command is 0%. A positive outdoor offset does not keep the valve open by itself.
 - While the room is below the target by at most the **temperature deadband** (default **0.3 °C**), the valve stays at its current opening. The first move in that band uses the opening the curve gives at the target, including the outdoor trim.
 - While the room is further below the target, the valve may open by at most the **maximum position increase** (default **5** points) per move. It takes the next step after each minimum cycle while the room stays that cold, without waiting for the temperature to change again. If the curve has fallen below the current opening, the valve closes to it in one move.
 
@@ -115,7 +115,7 @@ Examples with the default curve, a 0.3 °C deadband, a maximum increase of 5, an
 | 0.3 °C below the target (40%) | 2 °C (+6) | 46% | 38% |
 | 2 °C or more below the target (100%) | -8 °C (+29) | 100% | 66%, then +5 per move |
 
-A mild afternoon trims the opening. At 12 °C with the room on the target the command is 7%, and at 15 °C the outdoor trim closes the valve. A cold outdoor temperature opens it further even when the room is briefly at the target, because the house is about to lose heat. If the outdoor sensor is missing, the indoor curve is used on its own. `off` does not apply the outdoor adjustment: the valve goes to the lowest indoor position, normally 0%.
+A mild afternoon trims the opening. At 12 °C with the room on the target the command is 7%, and at 15 °C the outdoor trim closes the valve. A cold outdoor temperature opens it further even when the room is briefly at the target, because the house is about to lose heat. Once the room is far enough above the target that the indoor curve is closed, that offset is not sent: the command is 0%, and `calculated_position` still shows the offset. If the outdoor sensor is missing, the indoor curve is used on its own. `off` does not apply the outdoor adjustment: the valve goes to the lowest indoor position, normally 0%.
 
 ## Maximum position
 

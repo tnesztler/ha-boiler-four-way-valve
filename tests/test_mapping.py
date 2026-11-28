@@ -338,6 +338,54 @@ class ControlDecisionTests(unittest.TestCase):
         self.assertEqual(calculated, 43)
         self.assertEqual(command, 22)
 
+    def test_outdoor_offset_alone_does_not_hold_the_valve_open(self) -> None:
+        # Room is 0.2 °C above the target, so the indoor curve is closed.
+        # The outdoor offset is the only remaining opening, and it is not sent.
+        command, calculated, difference, adjustment = self._positions(
+            current=19.7,
+            target=19.5,
+            outdoor=0,
+            previous=40,
+        )
+        self.assertEqual(difference, -0.2)
+        self.assertAlmostEqual(adjustment, 10)
+        self.assertEqual(calculated, 10)
+        self.assertEqual(command, 0)
+        self.assertFalse(
+            mapping.another_step_owed(
+                command=command,
+                calculated=calculated,
+                difference=difference,
+                deadband=mapping.DEFAULT_TEMPERATURE_DEADBAND,
+                max_position=100,
+                tolerance=1,
+            )
+        )
+
+    def test_a_cold_outdoor_boost_still_closes_when_the_indoor_curve_is_shut(self) -> None:
+        command, calculated, difference, adjustment = self._positions(
+            current=19.8,
+            target=19.5,
+            outdoor=-10,
+            previous=25,
+        )
+        self.assertEqual(difference, -0.3)
+        self.assertAlmostEqual(adjustment, 35)
+        self.assertEqual(calculated, 35)
+        self.assertEqual(command, 0)
+
+    def test_manual_hold_stays_when_the_indoor_curve_is_closed(self) -> None:
+        command, calculated, _, adjustment = self._positions(
+            manual=True,
+            manual_position=15,
+            current=19.8,
+            target=19.5,
+            outdoor=0,
+        )
+        self.assertAlmostEqual(adjustment, 10)
+        self.assertEqual(calculated, 10)
+        self.assertEqual(command, 15)
+
     def test_warm_room_closes_to_the_curve_in_one_move(self) -> None:
         command, calculated, difference, _ = self._positions(
             current=21.1,

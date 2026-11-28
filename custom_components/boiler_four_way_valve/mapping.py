@@ -8,8 +8,9 @@ keys, the nearest end of the line is kept.
 
 The command then saves oil. Inside a deadband below the target the valve stays
 where it is. At or above the target it follows the curve closed in one move.
-Further below the target it may open by only a few points per cycle, and it
-may close by as many points as the curve asks.
+Once that curve is already closed, the outdoor offset does not keep the valve
+open. Further below the target it may open by only a few points per cycle, and
+it may close by as many points as the curve asks.
 """
 
 from __future__ import annotations
@@ -324,8 +325,10 @@ def valve_positions(
     ``calculated`` is the curve after the outdoor trim, clamped to 0–100.
     It keeps climbing past the safety ceiling so the unmet opening stays
     visible. ``command`` is what the valve is sent: the curve, then the
-    deadband and the slow open, then the ceiling. Manual holds its position
-    under the ceiling. Off commands the lowest mapped position.
+    deadband and the slow open, then the ceiling. When the indoor curve is
+    already closed, the command is closed too: a positive outdoor offset is
+    not sent on its own. Manual holds its position under the ceiling. Off
+    commands the lowest mapped position.
     """
     indoor, difference = cover_position(
         mapping,
@@ -351,6 +354,8 @@ def valve_positions(
             hvac_off=True,
         )
         command = limit_position(closed, max_position)
+    elif indoor == CLOSED_POSITION:
+        command = limit_position(CLOSED_POSITION, max_position)
     elif difference is None:
         command = limit_position(calculated, max_position)
     else:
